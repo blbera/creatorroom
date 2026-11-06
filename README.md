@@ -6,6 +6,14 @@ A solo creator uploads a matching SRT/VTT transcript for their YouTube video. Pr
 
 The React/Tailwind workspace provides the official YouTube player, clickable sections/evidence, searchable timestamped transcript, format tabs, review findings, version comparison and Markdown/chapter-text/JSON downloads. It has no second chat interface and publishes nothing to social platforms.
 
+## Architecture
+
+![CreatorRoom architecture](docs/assets/creatorroom-architecture.png)
+
+Slack is the collaboration surface; Switch routes the two agents’ messages and review handoffs. A local Docker deployment runs Switch, PostgreSQL, Gateway, and CreatorRoom. Claude is called from the application server. React provides source navigation and exports; approval remains in Slack.
+
+[Architecture details](docs/architecture.md) · [Editable SVG](docs/assets/creatorroom-architecture.svg) · [Logo sources](docs/assets/LOGO-SOURCES.md)
+
 ## Why Switch is central
 
 The live path is **Slack creator → Switch bridge → custom agent → Switch → Slack**. Producer and Reviewer are our own TypeScript clients with separate creator-owned Switch identities and API keys. Switch carries addressed messages, room membership, identity policy, shared documents and the actual agent-to-agent review handoff. Removing Switch breaks the workflow. We use neither a separate Slack bot receiver nor an incoming webhook to post replies.

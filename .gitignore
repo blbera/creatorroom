@@ -36,3 +36,10 @@ __pycache__/
 # Safe setup templates contain placeholders only.
 !.env.example
 !**/.env.example
+
+# Recording notes and submission preparation stay local.
+DEMO.md
+docs/demo-script.md
+docs/demo-readiness.md
+docs/submission-checklist.md
+docs/slack-setup.md
