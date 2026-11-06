@@ -67,9 +67,19 @@ const styles: Record<string, string[]> = {
   subtitle: ['text-sm text-muted'],
 
   'project-select': [
-    'grid max-w-full gap-2 text-[9px] tracking-[1.5px] min-[801px]:max-w-[260px]',
-    '[&_select]:max-w-[180px] xl:[&_select]:max-w-[260px]',
+    'grid w-full max-w-full shrink-0 gap-2 text-[10px] tracking-[1.5px]',
+    'min-[801px]:w-[clamp(280px,32vw,420px)]',
   ],
+
+  'editorial-select': [
+    'h-12 min-h-12 min-w-0 cursor-pointer appearance-none rounded-md border border-line',
+    'bg-[#fffef9] py-0 pl-4 pr-12 text-sm leading-normal font-medium tracking-normal',
+    'text-ink transition-colors hover:border-[#94a58c]',
+  ],
+
+  'workspace-select': ['w-full max-w-full'],
+
+  'version-select': ['w-[160px] max-w-full shrink-0 min-[801px]:w-[180px]'],
 
   statusbar: [
     'flex flex-wrap items-center gap-2.5 pb-[25px] text-[11px] text-muted',

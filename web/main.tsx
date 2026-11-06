@@ -232,7 +232,9 @@ const App = () => {
           <label className={cx('project-select')}>
             WORKSPACE
             <select
+              className={cx('editorial-select workspace-select')}
               aria-label="Select project"
+              title={project?.title || 'Select project'}
               value={project?.id || ''}
               onChange={(e) => {
                 setVersion(0);
@@ -349,6 +351,7 @@ const App = () => {
             <div className={cx('section-heading')}>
               <h2>02 / The content pack</h2>
               <select
+                className={cx('editorial-select version-select')}
                 aria-label="Pack version"
                 value={version}
                 onChange={(e) => setVersion(Number(e.target.value))}
