@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+./scripts/switch up -d --wait
+./scripts/app up -d --build --wait

@@ -51,6 +51,19 @@ app.get('/api/health', () => ({
     ]),
   ),
 }));
+app.get('/api/ready', async (_request, reply) => {
+  const clients = Object.values(workflow.clients);
+  const workersReady = clients.length === 2 && clients.every((client) => client.connected);
+  let switchReady = false;
+  try {
+    switchReady = (await fetch(switchUrl + '/health', { signal: AbortSignal.timeout(2000) })).ok;
+  } catch {}
+  const ready = store.db.open && workersReady && switchReady;
+  return reply
+    .code(ready ? 200 : 503)
+    .send({ ready, database: store.db.open, workersReady, switchReady });
+});
+
 app.get('/api/status', async () => {
   let switchHealthy = false;
   try {
@@ -167,13 +180,20 @@ const startWorkers = async () => {
       workflow.enqueue(name, e),
     );
     workflow.clients[name] = c;
-    try {
-      await c.start();
-    } catch {
-      store.set(
-        'worker:error:' + name,
-        'Startup failed; check Switch readiness and persisted identity',
-      );
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        await c.start();
+        break;
+      } catch {
+        if (attempt === 5) {
+          store.set(
+            'worker:error:' + name,
+            'Startup failed after six attempts; check Switch readiness and persisted identity',
+          );
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(8000, 500 * 2 ** attempt)));
+        }
+      }
     }
   }
   workflow.start();

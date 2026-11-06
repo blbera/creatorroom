@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+export CREATORROOM_UID="${CREATORROOM_UID:-$(id -u)}"
+export CREATORROOM_GID="${CREATORROOM_GID:-$(id -g)}"
+exec docker compose --project-name creatorroom-app --env-file .env -f infra/app.compose.yaml "$@"

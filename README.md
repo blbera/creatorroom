@@ -2,57 +2,128 @@
 
 A creator’s editorial team in Slack, powered by Switch: source-grounded content packs and navigable video sections.
 
-CreatorRoom takes a creator-owned YouTube URL and matching uploaded SRT/VTT transcript. Producer proposes two angles, drafts a versioned pack, and addresses Reviewer through Switch. The creator requests selective revisions and approves an exact version in Slack. The web workspace provides transcript search, source evidence, section navigation, version comparison, and Markdown, chapter-text, and JSON exports.
+A solo creator uploads a matching SRT/VTT transcript for their YouTube video. Producer proposes two creative angles in Slack, waits for a choice, then drafts a YouTube description, X thread, LinkedIn post, newsletter and navigation sections. Reviewer receives an actual addressed request through Switch, reads the original transcript, and returns source-linked findings. The creator requests selective revisions and approves an exact immutable version in Slack.
 
-## Current state
+The React/Tailwind workspace provides the official YouTube player, clickable sections/evidence, searchable timestamped transcript, format tabs, review findings, version comparison and Markdown/chapter-text/JSON downloads. It has no second chat interface and publishes nothing to social platforms.
 
-Development scaffold with implemented workflow code and deterministic tests. Switch 0.31.0 and PostgreSQL are deployed locally and healthy; browser Gateway returns HTTP 200. Producer and Reviewer are registered. The Slack Socket Mode bridge is active and the creator identity is linked. Anthropic authentication and Haiku availability are verified.
+## Why Switch is central
 
-**Not demo-ready:** live Slack agent round trips, model generation/review, revision/approval, real YouTube seeking, browser acceptance, and full app container deployment remain to be verified. The fixture is original text with no unrelated video attached.
+The live path is **Slack creator → Switch bridge → custom agent → Switch → Slack**. Producer and Reviewer are our own TypeScript clients with separate creator-owned Switch identities and API keys. Switch carries addressed messages, room membership, identity policy, shared documents and the actual agent-to-agent review handoff. Removing Switch breaks the workflow. We use neither a separate Slack bot receiver nor an incoming webhook to post replies.
 
-## Local development
+Both workers, Fastify and SQLite run in one Node process to keep a single SQLite writer. React assets are served by Fastify. The official Anthropic SDK uses configurable Haiku identifiers and schema-validated output. Credentials stay server-side.
 
-Requires Node.js 24+, Python 3, Docker with Compose, an Anthropic API key, and an editable Slack custom app. No Switch Console or Mattermost is required.
+
+## First-time setup
+
+Requires Docker with Compose, Node.js 24+ for local tooling, Python 3.11+, an Anthropic API key, an editable Slack custom app, and an owned video/matching transcript. No Switch Console, Mattermost, Redis, public tunnel or Docker socket mount is required.
 
 ```sh
 npm ci
-npm test
-npm run build
-npm start
+python3 scripts/init-env.py
+./scripts/switch up -d --wait
 ```
 
-The app listens at http://localhost:4173. Run `npx tsx scripts/seed.ts` for an explicitly labeled fixture. Fixture mode makes no model or Slack calls.
+The initializer creates mode-0600 local `.env` files once and never overwrites them. Do not regenerate database/master keys or change `creatorroom.local` after initial deployment. Environment files and examples are intentionally excluded from Git, as are internal planning notes and local documentation.
 
-Environment files are intentionally excluded from this repository. Create a local `.env` with `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_TEAM_ID`, `SLACK_CHANNEL_ID`, and `SLACK_USER_ID`. Optional settings: `SLACK_USERNAME`, `SWITCH_URL` (default http://127.0.0.1:8000), `APP_HOST` (default 127.0.0.1), `APP_PORT` (default 4173), `APP_BASE_URL` (default http://localhost:4173), and `DATA_DIR` (default .local/app). Never put credentials in browser build variables.
+Fill the root `.env` locally:
 
-`npm run models` lists available models without requesting generation. The app verifies the configured identifier before generation. Use Haiku and a small original source while developing; no automated paid smoke runs are included.
+| Setting | Purpose |
+| --- | --- |
+| ANTHROPIC_API_KEY | Anthropic Console API credential |
+| ANTHROPIC_MODEL | Available model identifier; demo used claude-haiku-4-5-20251001 |
+| SLACK_BOT_TOKEN | xoxb bot OAuth token, used by setup to configure Switch |
+| SLACK_APP_TOKEN | xapp app-level token with connections:write |
+| SLACK_TEAM_ID | Actual T… workspace identifier |
+| SLACK_CHANNEL_ID | Actual dedicated demo channel identifier |
+| SLACK_USER_ID | Creator’s U… member ID |
+| SLACK_USERNAME | Actual Slack handle for identity directory matching |
 
-Switch infrastructure is pinned to released server 0.31.0. Create `infra/switch/.env` locally with `SWITCH_VERSION=0.31.0`, `DB_OWNER_USER=creatorroom_owner`, `DB_USER=creatorroom_runtime`, `DB_NAME=switch`, independent random database passwords, `AGENT_REGISTRATION_TOKEN`, `SECRET_KEYS=v1:<random-secret-at-least-32-characters>`, `GATEWAY_ADMIN_EMAIL`, `GATEWAY_ADMIN_PASSWORD`, and `FRONTEND_BASE_URL=http://localhost:3000`. Keep it mode 0600; retain the keys and fixed server identity across restarts.
+`npm run models` verifies authentication and lists available identifiers without generating content. The application verifies its configured model before generation. Keep paid tests small; no additional provider is used.
+
+### Slack setup
+
+Reuse an installed custom app if you can edit it, or create one from `infra/slack-manifest.json`. The manifest comes from the pinned Switch release; optional paid user-group autocomplete and the unused Agents declaration are removed. One app represents both agents under individual display names; they are not separate Slack accounts.
+
+1. Enable **Socket Mode** and **Interactivity**. Under Basic Information, generate an app-level token with `connections:write`.
+2. Compare scopes/commands against the manifest. Enable Event Subscriptions and its bot message events, especially `message.channels` for a public demo channel. Save and reinstall after permission changes.
+3. Copy the bot token from OAuth & Permissions. Record the team/channel/member IDs and put all values only in local `.env`.
+4. Run the supported Gateway bootstrap and register our agents:
 
 ```sh
-./scripts/switch config --quiet
-./scripts/switch up -d
-./scripts/switch ps
 npm run switch:setup
 npm run agents:register
 ```
 
-Gateway is http://localhost:3000; Switch is http://localhost:8000. PostgreSQL is not published. Only the Gateway profile is enabled. Stop with `./scripts/switch stop`; volumes persist. Never use `down -v` for routine troubleshooting.
+5. Invite the app into **only the designated demo channel** and send a message. Run `python3 scripts/link-room.py` to attach both agents and bind exact opaque sender identities. If the app joined before Switch started and no room is found, `python3 scripts/link-room.py --bind-existing` binds the configured existing channel via the supported Gateway API.
+6. Start the application stack:
 
-Reuse your Slack app, comparing its settings with `infra/slack-manifest.json`. Enable Socket Mode and Interactivity, generate an app-level token with `connections:write`, and retain its bot OAuth token. Invite the app only to the dedicated channel. After setting your team/channel/member IDs locally, run `npm run switch:setup` to check tokens and link your identity, then `python3 scripts/link-room.py` to attach both agents. Restart the app afterward. No incoming webhook, public tunnel, Console, or Mattermost is required.
+```sh
+./scripts/start
+```
 
-Back up PostgreSQL with `pg_dump -Fc`, SQLite using its backup API or while the app is stopped, uploaded sources, and the original secret/identity files. Keep backups private and ignored. Restore into a separate isolated deployment first with the same server identity and master keys.
+Type `@producer ping`. Free Slack users type the handle as plain text; autocomplete is not required. Producer should answer, address Reviewer through Switch, and Reviewer should reply. A valid token alone does not prove channel membership or incoming event subscriptions.
 
-Official contracts: [Switch self-hosting](https://docs.switchagents.ai/switch-rooms/deploy/self-host), [Slack](https://docs.switchagents.ai/switch-rooms/deploy/messaging-apps/slack), [agent protocol](https://docs.switchagents.ai/switch-rooms/internals/agent-protocol), and [YouTube Player API](https://developers.google.com/youtube/iframe_api_reference). The upstream Compose YAML is preserved; project changes are isolated in its override.
+### Addresses and persistence
 
-## Workflow commands
+| Service | Host address | Container address |
+| --- | --- | --- |
+| CreatorRoom web/API | http://localhost:4173 | creatorroom:4173 |
+| Switch API | http://localhost:8000 | switch:8000 |
+| Browser Gateway | http://localhost:3000 | gateway:3000 |
+| PostgreSQL | Not published | postgres:5432 |
 
-In the designated channel: `@producer ping`, `@producer project <id> brief`, `@producer angle 1`, `@producer revise linkedin make the opening more direct`, `@producer approve v2`. Include `project <id>` before a command when the room has several projects. Commands are typed handles supported by Switch, including free Slack plans.
+All host ports bind to 127.0.0.1. `creatorroom-switch` is the isolated upstream project/network; `creatorroom-app` contains our service. Upstream Compose is preserved, with a small override disabling PostgreSQL publishing and fixing identity/restart/health behavior. Only the Gateway profile is enabled. Native ARM64 images avoid emulation. The Node base image is pinned by digest.
 
-CreatorRoom never posts through an incoming webhook or independent Slack bot. Reviewer work must be triggered by Producer’s addressed Switch request. Approval checks compare the configured human identity, room, and exact current version in application code.
+`.local/app` holds SQLite and original uploads. Agent and room configuration are read-only mounts. The app receives only the model secret and Slack team/channel identifiers; Slack bridge tokens are stored by Switch using its supported encrypted configuration. Secrets/private content never enter the image build context. `/api/ready` requires database, both worker sockets and Switch health. Startup retries are bounded.
 
-## Limits
+```sh
+./scripts/status
+./scripts/diagnostics
+./scripts/stop
+./scripts/start
+```
 
-Claims are supported by the supplied transcript, not independently fact-checked. X length checks use a conservative character budget, not platform-weighted counting. CreatorRoom sections navigate the embedded player; they do not enable native YouTube chapters. Localhost links open only on the host computer. The local app is intended for a trusted local demo, not public hosting.
+Normal stops preserve data. Do not use `down -v`, prune resources, or run a second app writer alongside Docker. Diagnostics do not dump secret configuration or raw logs.
 
-The public repository contains source only. Judges still need reproducible setup, their own credentials or supervised demo access, and a recording of the verified end-to-end workflow before submission. No registration, submission, or social content has been published automatically.
+## Content workflow
+
+Open CreatorRoom → New project. Supply a title, HTTPS YouTube URL, confirmed duration, matching SRT/VTT up to 2 MiB, and audience/tone/examples/preferred/prohibited phrases. Original source is retained; transcript instructions are treated as untrusted content.
+
+In Slack:
+
+```text
+@producer brief
+@producer angle 1
+@producer revise linkedin Make the opening more direct and practical.
+@producer approve v4
+```
+
+Use the actual latest version, not the example number. If several projects share a room, include `project <id>` before the command. Producer waits for the angle choice. Each revision creates a new version and invalidates approval for that version; unrelated assets/IDs and chapters are preserved. Reviewer is invoked only by the addressed Switch handoff. Approvals require the linked human creator, correct room, reviewed current exact version and passing deterministic checks. Models, agents and transcript text cannot approve.
+
+Source references and exact/normalised quote checks are deterministic. Chapter checks include first start 00:00, ascending starts, video bounds, at least three entries and at least ten seconds per section including the last. Unsupported native chapter text is rejected. X uses 5–7 posts and a conservative 270-character budget, not platform-weighted validation. LinkedIn targets 150–250 words; newsletter 250–400.
+
+Review is **supported by transcript**, not independently fact-checked. ASR errors in names can propagate; the creator should correct the source. Direct-quote metadata is reserved for actual verbatim quotes present in the asset. Supporting claims link to original source segments. Producer owns the brief/pack room document; Reviewer owns its review document. Each updates only its own document. References never grant external credentials; Slack gets separate readable summaries and usable local artifact links.
+
+CreatorRoom sections navigate the official embed after readiness and preserve its controls. They do not enable native chapters on a channel. Playback/embedding errors show a fallback YouTube link; seeking is not frame precise and does not force paused playback to start.
+
+## Verification and development
+
+```sh
+npm test
+npm run build
+npm run format:check
+uvx ruff check scripts
+uvx ruff format --check scripts
+```
+
+Browser acceptance was run locally with Playwright/Chrome. Browser test files and new test changes are retained locally and excluded from this commit. Verification covered mocked API/player behavior separately from real YouTube playback, seeking and approved exports. Mocked tests never establish live model or video functionality.
+
+For an original offline fixture, stop the app, run `npx tsx scripts/seed.ts`, then restart it. The fixture has no real video and is labeled throughout. A fixture does not establish live integration success.
+
+Events are persisted before cursor acknowledgement and deduplicated by source message ID. Heartbeats are independent of model work. Reconnects use persisted generation/cursor and stop on takeover or explicit gaps. Permanent model errors stop immediately; transient retries are bounded. Ambiguous external sends stop for reconciliation instead of blindly duplicating messages. An operator must investigate those cases before resuming.
+
+## Backup and restore
+
+`python3 scripts/backup.py` creates an ignored private backup containing a PostgreSQL custom dump, SQLite backup-API snapshot, uploads, required secret/identity files and SHA-256 manifest. Files use mode 0600; directories 0700. Backups contain credentials and source content: keep them offline and out of Git.
+
+To restore, use a separate empty checkout with different project/network names and host ports. Restore original environment/master keys and agent/room configuration, load the dump as the schema owner into the isolated PostgreSQL instance, and place the SQLite snapshot/uploads in its `.local/app` while workers are stopped. Retain the original server identity. Start and verify the restored project before deciding whether to replace an existing deployment. Reconcile cursors after any rollback; never reset the working stack as routine troubleshooting. Backup readability/integrity is checked; destructive restore over the working stack has not been performed.

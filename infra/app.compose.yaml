@@ -1,0 +1,31 @@
+services:
+  creatorroom:
+    build:
+      context: ..
+    restart: unless-stopped
+    init: true
+    user: "${CREATORROOM_UID:?use scripts/app}:${CREATORROOM_GID:?use scripts/app}"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set in .env}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:?set in .env}
+      SLACK_TEAM_ID: ${SLACK_TEAM_ID:?set in .env}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:?set in .env}
+      SWITCH_URL: http://switch:8000
+      APP_HOST: 0.0.0.0
+      APP_PORT: 4173
+      APP_BASE_URL: http://localhost:4173
+      DATA_DIR: /data
+      AGENT_IDENTITIES_FILE: /run/creatorroom/agents.json
+      ROOM_CONFIG_FILE: /run/creatorroom/room.json
+    ports:
+      - 127.0.0.1:4173:4173
+    volumes:
+      - ../.local/app:/data
+      - ../.local/agents.json:/run/creatorroom/agents.json:ro
+      - ../.local/room.json:/run/creatorroom/room.json:ro
+    networks:
+      - switch
+networks:
+  switch:
+    name: creatorroom-switch
+    external: true

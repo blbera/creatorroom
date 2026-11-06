@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Project, Pack, AssetName } from '../src/domain';
 import './style.css';
+import { cx } from './ui';
 
 const names: Record<AssetName, string> = {
   description: 'YouTube description',
@@ -92,9 +93,9 @@ const Player = ({
   }, [seek, ready]);
   return (
     <>
-      <div className="video" ref={node}>
+      <div className={cx('video')} ref={node}>
         {!videoId && (
-          <div className="video-empty">
+          <div className={cx('video-empty')}>
             <span>ORIGINAL TEST FIXTURE</span>
             <h2>
               Words first.
@@ -106,7 +107,7 @@ const Player = ({
         )}
       </div>
       {videoId && (
-        <div className="player-status">
+        <div className={cx('player-status')}>
           <span>
             {error ||
               (ready
@@ -137,15 +138,17 @@ const App = () => {
     [showImport, setShowImport] = useState(false),
     [diff, setDiff] = useState(false),
     [busy, setBusy] = useState(false);
-  const selectedId = new URLSearchParams(location.search).get('project');
+  const selectedProject = useRef(new URLSearchParams(location.search).get('project'));
 
   const load = async (id?: string) => {
     try {
       const list = await api('/api/projects');
       setProjects(list);
-      const key = id || project?.id || selectedId || list[0]?.id;
+      const key = id || selectedProject.current || list[0]?.id;
       if (key) {
+        selectedProject.current = key;
         const p = await api('/api/projects/' + key);
+        if (selectedProject.current !== key) return;
         setProject(p);
         setVersion((v) =>
           v && p.packs.some((x: Pack) => x.version === v) ? v : (p.packs.at(-1)?.version ?? 0),
@@ -184,48 +187,48 @@ const App = () => {
   };
 
   return (
-    <div className="shell">
-      <aside className="rail">
-        <a className="brand" href="/">
+    <div className={cx('shell')}>
+      <aside className={cx('rail')}>
+        <a className={cx('brand')} href="/">
           c<span>r</span>
           <i>●</i>
         </a>
-        <div className="rail-word">CREATORROOM</div>
-        <div className="rail-bottom">
+        <div className={cx('rail-word')}>CREATORROOM</div>
+        <div className={cx('rail-bottom')}>
           A ROOM FOR
           <br />
           YOUR IDEAS.
         </div>
       </aside>
-      <main>
-        <header>
-          <div className="wordmark">
+      <main className={cx('main')}>
+        <header className={cx('header')}>
+          <div className={cx('wordmark')}>
             CreatorRoom<span>EDITORIAL WORKSPACE</span>
           </div>
-          <div className="header-actions">
+          <div className={cx('header-actions')}>
             <span
-              className={'connection ' + (status?.switchHealthy ? 'online' : '')}
+              className={cx('connection ' + (status?.switchHealthy ? 'online' : ''))}
               aria-live="polite"
             >
               {status?.switchHealthy ? 'Switch connected' : 'Switch disconnected'}
             </span>
-            <button className="dark" onClick={() => setShowImport(true)}>
+            <button className={cx('dark')} onClick={() => setShowImport(true)}>
               + New project
             </button>
           </div>
         </header>
         {error && (
-          <div role="alert" className="alert">
+          <div role="alert" className={cx('alert')}>
             {error}
           </div>
         )}
-        <section className="intro">
+        <section className={cx('intro')}>
           <div>
-            <div className="eyebrow">FROM LONG FORM TO WHAT’S NEXT</div>
+            <div className={cx('eyebrow')}>FROM LONG FORM TO WHAT’S NEXT</div>
             <h1>{project?.title || 'Give your ideas a second life.'}</h1>
-            <p className="subtitle">One source. A considered content pack. Your final say.</p>
+            <p className={cx('subtitle')}>One source. A considered content pack. Your final say.</p>
           </div>
-          <label className="project-select">
+          <label className={cx('project-select')}>
             WORKSPACE
             <select
               aria-label="Select project"
@@ -245,8 +248,8 @@ const App = () => {
             </select>
           </label>
         </section>
-        <div className="statusbar">
-          <span className="badge">
+        <div className={cx('statusbar')}>
+          <span className={cx('badge')}>
             {project?.fixture
               ? 'Fixture · not a live demo'
               : approved
@@ -266,27 +269,27 @@ const App = () => {
           <span>{status?.modelConfigured ? status.model : 'Model setup pending'}</span>
         </div>
         {project?.fixture && (
-          <div className="fixture-note">
+          <div className={cx('fixture-note')}>
             Original fixture content for reproducible UI tests. No model, Slack review, approval, or
             real video playback is represented here.
           </div>
         )}
-        <div className="workspace">
-          <section className="source-column">
-            <div className="section-heading">
+        <div className={cx('workspace')}>
+          <section className={cx('source-column')}>
+            <div className={cx('section-heading')}>
               <h2>01 / The source</h2>
               <span>{project ? stamp(project.duration) : '—'} MIN:SEC</span>
             </div>
             <Player videoId={project?.videoId ?? null} seek={seek} />
-            <div className="section-heading small">
+            <div className={cx('section-heading small')}>
               <h3>Navigation sections</h3>
               <span>CREATORROOM NAVIGATION</span>
             </div>
-            <p className="micro">
+            <p className={cx('micro')}>
               These sections navigate this embedded player. They do not enable native YouTube
               chapters on your channel.
             </p>
-            <div className="chapters">
+            <div className={cx('chapters')}>
               {pack?.content.chapters.map((c, i) => (
                 <button key={i} disabled={!project?.videoId} onClick={() => jump(c.start)}>
                   <time>{stamp(c.start)}</time>
@@ -295,11 +298,13 @@ const App = () => {
                 </button>
               ))}
               {!pack && (
-                <p className="empty">Sections appear after you choose a creative angle in Slack.</p>
+                <p className={cx('empty')}>
+                  Sections appear after you choose a creative angle in Slack.
+                </p>
               )}
             </div>
-            <div className="transcript">
-              <div className="section-heading small">
+            <div className={cx('transcript')}>
+              <div className={cx('section-heading small')}>
                 <h3>Transcript</h3>
                 <span>{project?.segments.length ?? 0} SOURCE SEGMENTS</span>
               </div>
@@ -310,11 +315,11 @@ const App = () => {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <div className="transcript-scroll">
+              <div className={cx('transcript-scroll')}>
                 {project?.segments
                   .filter((s) => s.text.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
                   .map((s) => (
-                    <div className="cue" key={s.id} id={s.id}>
+                    <div className={cx('cue')} key={s.id} id={s.id}>
                       <button
                         disabled={!project.videoId}
                         onClick={() => jump(s.start)}
@@ -328,12 +333,12 @@ const App = () => {
                 {project &&
                   !project.segments.some((s) =>
                     s.text.toLowerCase().includes(query.toLowerCase()),
-                  ) && <p className="empty">No matching segments.</p>}
+                  ) && <p className={cx('empty')}>No matching segments.</p>}
               </div>
             </div>
           </section>
-          <section className="pack-column">
-            <div className="section-heading">
+          <section className={cx('pack-column')}>
+            <div className={cx('section-heading')}>
               <h2>02 / The content pack</h2>
               <select
                 aria-label="Pack version"
@@ -348,41 +353,67 @@ const App = () => {
                 ))}
               </select>
             </div>
-            <div className="tabs" role="tablist" aria-label="Content formats">
+            <div className={cx('tabs')} role="tablist" aria-label="Content formats">
               {(Object.keys(names) as AssetName[]).map((n) => (
                 <button key={n} role="tab" aria-selected={tab === n} onClick={() => setTab(n)}>
                   {names[n]}
                 </button>
               ))}
             </div>
-            <div className="asset">
-              <div className="asset-top">
-                <span className="eyebrow">{names[tab]}</span>
+            <div className={cx('asset')}>
+              <div className={cx('asset-top')}>
+                <span className={cx('eyebrow')}>{names[tab]}</span>
                 <button disabled={!previous} onClick={() => setDiff(!diff)}>
                   {diff ? 'Hide diff' : 'Compare previous'}
                 </button>
               </div>
               {pack ? (
                 <>
-                  <div className="asset-content" role="tabpanel">
+                  <div
+                    key={`${pack.version}:${tab}`}
+                    className={cx('asset-content')}
+                    role="tabpanel"
+                  >
                     {pack.content.assets[tab].content}
                   </div>
                   {diff && previous && (
-                    <div className="diff">
+                    <div className={cx('diff')}>
                       <h4>
                         Version {version - 1} → {version}
                       </h4>
                       {previous.content.assets[tab].content === pack.content.assets[tab].content ? (
-                        <p>Unchanged. Content and asset ID preserved.</p>
+                        <p>Text unchanged in this revision.</p>
                       ) : (
                         <>
                           <del>{previous.content.assets[tab].content}</del>
                           <ins>{pack.content.assets[tab].content}</ins>
                         </>
                       )}
+                      {JSON.stringify(previous.content.assets[tab].evidence) !==
+                        JSON.stringify(pack.content.assets[tab].evidence) && (
+                        <details>
+                          <summary>Source mapping changes</summary>
+                          <del>
+                            {previous.content.assets[tab].evidence
+                              .map(
+                                (entry) =>
+                                  `${entry.claim}\n${entry.quote ? `Direct quote: ${entry.quote}\n` : 'Paraphrase\n'}Sources: ${entry.segments.join(', ')}`,
+                              )
+                              .join('\n\n')}
+                          </del>
+                          <ins>
+                            {pack.content.assets[tab].evidence
+                              .map(
+                                (entry) =>
+                                  `${entry.claim}\n${entry.quote ? `Direct quote: ${entry.quote}\n` : 'Paraphrase\n'}Sources: ${entry.segments.join(', ')}`,
+                              )
+                              .join('\n\n')}
+                          </ins>
+                        </details>
+                      )}
                     </div>
                   )}
-                  <details className="evidence" open>
+                  <details className={cx('evidence')} open>
                     <summary>
                       Source evidence · {pack.content.assets[tab].evidence.length} mapped claims
                     </summary>
@@ -394,13 +425,17 @@ const App = () => {
                           const s = project!.segments.find((s) => s.id === id);
                           return s ? (
                             <button
-                              className="evidence-source"
+                              className={cx('evidence-source')}
                               key={id}
                               onClick={() => {
                                 jump(s.start);
-                                document
-                                  .getElementById(id)
-                                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                document.getElementById(id)?.scrollIntoView({
+                                  behavior: window.matchMedia('(prefers-reduced-motion: reduce)')
+                                    .matches
+                                    ? 'instant'
+                                    : 'smooth',
+                                  block: 'center',
+                                });
                               }}
                             >
                               {stamp(s.start)} · {s.text}
@@ -414,7 +449,7 @@ const App = () => {
                   </details>
                 </>
               ) : (
-                <div className="empty asset-empty">
+                <div className={cx('empty asset-empty')}>
                   <h3>Your source is the starting point.</h3>
                   <p>
                     Brief Producer in Slack, choose one of two angles, and your first version will
@@ -423,22 +458,22 @@ const App = () => {
                 </div>
               )}
             </div>
-            <section className="review">
-              <div className="section-heading small">
+            <section className={cx('review')}>
+              <div className={cx('section-heading small')}>
                 <h3>Reviewer’s desk</h3>
                 <span>{pack?.review ? 'REVIEW RECEIVED' : 'AWAITING SWITCH HANDOFF'}</span>
               </div>
-              <p className="micro">
+              <p className={cx('micro')}>
                 Supported by transcript. This is not independent factual verification.
               </p>
               {pack?.review?.findings.length === 0 && <p>Reviewer returned no issues.</p>}
               {[...(pack?.review?.findings ?? []), ...(pack?.checks ?? [])].map((f, i) => (
-                <article className="finding" key={i}>
+                <article className={cx('finding')} key={i}>
                   <span>
                     {f.severity.toUpperCase()} · {f.assetId}
                   </span>
                   <p>{f.explanation}</p>
-                  <p className="micro">{f.suggestion}</p>
+                  <p className={cx('micro')}>{f.suggestion}</p>
                   {f.segments.map((id) => {
                     const s = project?.segments.find((s) => s.id === id);
                     return (
@@ -452,10 +487,10 @@ const App = () => {
                 </article>
               ))}
               {!pack?.review && (
-                <p className="empty">No review has been received for this version.</p>
+                <p className={cx('empty')}>No review has been received for this version.</p>
               )}
             </section>
-            <div className="exports">
+            <div className={cx('exports')}>
               <div>
                 <h3>Take this version with you.</h3>
                 <p>
@@ -469,7 +504,7 @@ const App = () => {
                   <a
                     key={f}
                     aria-disabled={!pack}
-                    className={!pack ? 'disabled' : ''}
+                    className={cx(!pack ? 'disabled' : '')}
                     href={pack ? `/api/projects/${project!.id}/exports/${version}/${f}` : undefined}
                   >
                     {f === 'markdown' ? 'Markdown' : f === 'chapters' ? 'Chapter text' : 'JSON'} ↓
@@ -479,8 +514,8 @@ const App = () => {
             </div>
           </section>
         </div>
-        <section className="slack">
-          <div className="slack-mark">#</div>
+        <section className={cx('slack')}>
+          <div className={cx('slack-mark')}>#</div>
           <div>
             <h3>The conversation stays in Slack.</h3>
             <p>
@@ -491,32 +526,37 @@ const App = () => {
             <code>@producer revise linkedin make the opening more direct</code>
             <code>@producer approve v2</code>
             {project && !project.fixture && (
-              <p className="micro">
+              <p className={cx('micro')}>
                 For multiple projects include <code>project {project.id}</code> before the command.
               </p>
             )}
           </div>
           {status?.slackUrl ? (
-            <a className="dark button" href={status.slackUrl} target="_blank" rel="noreferrer">
+            <a
+              className={cx('dark button')}
+              href={status.slackUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
               Open demo room ↗
             </a>
           ) : (
             <span>Slack setup pending</span>
           )}
         </section>
-        <footer>
+        <footer className={cx('footer')}>
           CREATORROOM <span>Local workspace · localhost links open only on this computer.</span>
         </footer>
         {showImport && (
-          <div className="modal-backdrop">
+          <div className={cx('modal-backdrop')}>
             <section
-              className="modal"
+              className={cx('modal')}
               role="dialog"
               aria-modal="true"
               aria-labelledby="import-title"
             >
               <button
-                className="close"
+                className={cx('close')}
                 aria-label="Close import"
                 onClick={() => setShowImport(false)}
               >
@@ -550,11 +590,11 @@ const App = () => {
                   Matching transcript · SRT / VTT · max 2 MiB
                   <input name="transcript" type="file" accept=".srt,.vtt" required />
                 </label>
-                <p className="micro">
+                <p className={cx('micro')}>
                   The linked creator and designated Switch room are assigned by setup, not inferred
                   from uploaded text.
                 </p>
-                <button className="dark" disabled={busy}>
+                <button className={cx('dark')} disabled={busy}>
                   {busy ? 'Importing…' : 'Create project'}
                 </button>
               </form>
