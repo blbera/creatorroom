@@ -67,7 +67,7 @@ const styles: Record<string, string[]> = {
   subtitle: ['text-sm text-muted'],
 
   'project-select': [
-    'hidden max-w-[260px] gap-2 text-[9px] tracking-[1.5px] min-[801px]:grid',
+    'grid max-w-full gap-2 text-[9px] tracking-[1.5px] min-[801px]:max-w-[260px]',
     '[&_select]:max-w-[180px] xl:[&_select]:max-w-[260px]',
   ],
 

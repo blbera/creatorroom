@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import type { Project, Pack, AssetName } from '../src/domain';
 import './style.css';
 import { cx } from './ui';
+import { Editorial, SlackCommand } from './Editorial';
 
 const names: Record<AssetName, string> = {
   description: 'YouTube description',
@@ -260,14 +261,21 @@ const App = () => {
                     ? 'Awaiting review'
                     : 'Awaiting creator brief'}
           </span>
-          <span>
-            Producer: {status?.workers?.producer?.connected ? 'connected' : 'disconnected'}
-          </span>
-          <span>
-            Reviewer: {status?.workers?.reviewer?.connected ? 'connected' : 'disconnected'}
-          </span>
-          <span>{status?.modelConfigured ? status.model : 'Model setup pending'}</span>
+          <details className="text-[11px]">
+            <summary className="cursor-pointer">Connection details</summary>
+            <p>
+              Producer: {status?.workers?.producer?.connected ? 'connected' : 'disconnected'} ·
+              Reviewer: {status?.workers?.reviewer?.connected ? 'connected' : 'disconnected'}
+            </p>
+            <p>{status?.modelConfigured ? status.model : 'Model setup pending'}</p>
+          </details>
+          {project && project.packs.at(-1) && version !== project.packs.at(-1)!.version && (
+            <button className="text-xs" onClick={() => setVersion(project.packs.at(-1)!.version)}>
+              View latest v{project.packs.at(-1)!.version}
+            </button>
+          )}
         </div>
+        {project && <Editorial project={project} pack={pack} />}
         {project?.fixture && (
           <div className={cx('fixture-note')}>
             Original fixture content for reproducible UI tests. No model, Slack review, approval, or
@@ -467,13 +475,54 @@ const App = () => {
                 Supported by transcript. This is not independent factual verification.
               </p>
               {pack?.review?.findings.length === 0 && <p>Reviewer returned no issues.</p>}
+              {pack?.review?.findings.some(
+                (f, i) =>
+                  f.severity === 'error' &&
+                  !pack.findingDecisions?.some((d) => d.findingId === `F${i + 1}`),
+              ) && (
+                <p role="status" className="my-3 rounded bg-[#f6ded4] p-3">
+                  Blocking review findings need a fix or an explicit creator decision before
+                  approval. Deterministic errors must be fixed.
+                </p>
+              )}
               {[...(pack?.review?.findings ?? []), ...(pack?.checks ?? [])].map((f, i) => (
                 <article className={cx('finding')} key={i}>
                   <span>
-                    {f.severity.toUpperCase()} · {f.assetId}
+                    {i < (pack?.review?.findings.length ?? 0) ? `F${i + 1}` : 'VALIDATION'} ·{' '}
+                    {f.severity.toUpperCase()} ·{' '}
+                    {f.assetId === 'chapters'
+                      ? 'Navigation sections'
+                      : (Object.entries(pack?.content.assets ?? {}).find(
+                          ([, a]) => a.id === f.assetId,
+                        )?.[0] ?? f.assetId)}
                   </span>
                   <p>{f.explanation}</p>
                   <p className={cx('micro')}>{f.suggestion}</p>
+                  {i < (pack?.review?.findings.length ?? 0) && project && pack && (
+                    <>
+                      {pack.findingDecisions?.find((d) => d.findingId === `F${i + 1}`) ? (
+                        <p className="rounded bg-[#e8eddf] p-2">
+                          Creator accepted:{' '}
+                          {pack.findingDecisions.find((d) => d.findingId === `F${i + 1}`)!.reason}
+                        </p>
+                      ) : (
+                        version === project.packs.at(-1)?.version && (
+                          <>
+                            <SlackCommand
+                              command={`@producer project ${project.id} fix F${i + 1} v${version}`}
+                            />
+                            <p className={cx('micro')}>
+                              To keep this wording, explain your decision in Slack. This does not
+                              approve the pack.
+                            </p>
+                            <SlackCommand
+                              command={`@producer project ${project.id} accept F${i + 1} v${version} <your reason>`}
+                            />
+                          </>
+                        )
+                      )}
+                    </>
+                  )}
                   {f.segments.map((id) => {
                     const s = project?.segments.find((s) => s.id === id);
                     return (
@@ -522,9 +571,23 @@ const App = () => {
               Brief, choose, revise, and approve through Switch. Approval always names an exact
               version.
             </p>
-            <code>@producer angle 1</code>
-            <code>@producer revise linkedin make the opening more direct</code>
-            <code>@producer approve v2</code>
+            {project && (
+              <div className="min-w-0">
+                <SlackCommand
+                  command={`@producer project ${project.id} brief Focus on the practical lesson for beginners.`}
+                />
+                <SlackCommand command={`@producer project ${project.id} angle 1`} />
+                <SlackCommand
+                  command={`@producer project ${project.id} revise linkedin Make the opening more direct.`}
+                />
+                <SlackCommand
+                  command={`@producer project ${project.id} revise chapters Split the longest section at the next topic change.`}
+                />
+                {pack && (
+                  <SlackCommand command={`@producer project ${project.id} approve v${version}`} />
+                )}
+              </div>
+            )}
             {project && !project.fixture && (
               <p className={cx('micro')}>
                 For multiple projects include <code>project {project.id}</code> before the command.

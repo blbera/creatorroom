@@ -23,7 +23,7 @@ python3 scripts/init-env.py
 ./scripts/switch up -d --wait
 ```
 
-The initializer creates mode-0600 local `.env` files once and never overwrites them. Do not regenerate database/master keys or change `creatorroom.local` after initial deployment. Environment files and examples are intentionally excluded from Git, as are internal planning notes and local documentation.
+The initializer creates mode-0600 local `.env` files once and never overwrites them. Do not regenerate database/master keys or change `creatorroom.local` after initial deployment. Real environment files, private runtime data, and internal planning notes are excluded from Git. Placeholder .env.example files, tests, and public setup documentation are included for reproducibility.
 
 Fill the root `.env` locally:
 
@@ -92,13 +92,17 @@ Open CreatorRoom → New project. Supply a title, HTTPS YouTube URL, confirmed d
 In Slack:
 
 ```text
-@producer brief
+@producer brief Focus on the practical lesson for beginners.
 @producer angle 1
 @producer revise linkedin Make the opening more direct and practical.
-@producer approve v4
+@producer revise chapters Split the longest section at the next topic change.
+@producer fix F1 v5
+@producer accept F1 v5 This is explicitly labelled as my personal opinion.
+@producer glossary "Falco DB" => "FalkorDB"
+@producer approve v6
 ```
 
-Use the actual latest version, not the example number. If several projects share a room, include `project <id>` before the command. Producer waits for the angle choice. Each revision creates a new version and invalidates approval for that version; unrelated assets/IDs and chapters are preserved. Reviewer is invoked only by the addressed Switch handoff. Approvals require the linked human creator, correct room, reviewed current exact version and passing deterministic checks. Models, agents and transcript text cannot approve.
+Use the actual latest version, not the example number. If several projects share a room, include `project <id>` before the command. Producer waits for the angle choice. Each revision creates a new version and invalidates approval for that version; unrelated assets/IDs and chapters are preserved. Reviewer is invoked only by the addressed Switch handoff. Approvals require the linked human creator, correct room, reviewed current exact version, passing deterministic checks, and no unresolved blocking Reviewer findings. A creator may explicitly accept a model finding with a version-specific reason; this never waives deterministic errors or approves the pack. Models, agents and transcript text cannot approve.
 
 Source references and exact/normalised quote checks are deterministic. Chapter checks include first start 00:00, ascending starts, video bounds, at least three entries and at least ten seconds per section including the last. Unsupported native chapter text is rejected. X uses 5–7 posts and a conservative 270-character budget, not platform-weighted validation. LinkedIn targets 150–250 words; newsletter 250–400.
 
@@ -116,7 +120,7 @@ uvx ruff check scripts
 uvx ruff format --check scripts
 ```
 
-Browser acceptance was run locally with Playwright/Chrome. Browser test files and new test changes are retained locally and excluded from this commit. Verification covered mocked API/player behavior separately from real YouTube playback, seeking and approved exports. Mocked tests never establish live model or video functionality.
+Browser tests and Playwright configuration are included. Install the browser once with `npx playwright install chromium`, start the app, then run `npm run test:browser` for mocked-player tests. To test your real owned video separately, set `LIVE_PROJECT_ID` and run `npm run test:browser:live`. These tests are opt-in and do not publish content. Verification covered mocked API/player behavior separately from real YouTube playback, seeking and approved exports. Mocked tests never establish live model or video functionality.
 
 For an original offline fixture, stop the app, run `npx tsx scripts/seed.ts`, then restart it. The fixture has no real video and is labeled throughout. A fixture does not establish live integration success.
 
@@ -127,3 +131,15 @@ Events are persisted before cursor acknowledgement and deduplicated by source me
 `python3 scripts/backup.py` creates an ignored private backup containing a PostgreSQL custom dump, SQLite backup-API snapshot, uploads, required secret/identity files and SHA-256 manifest. Files use mode 0600; directories 0700. Backups contain credentials and source content: keep them offline and out of Git.
 
 To restore, use a separate empty checkout with different project/network names and host ports. Restore original environment/master keys and agent/room configuration, load the dump as the schema owner into the isolated PostgreSQL instance, and place the SQLite snapshot/uploads in its `.local/app` while workers are stopped. Retain the original server identity. Start and verify the restored project before deciding whether to replace an existing deployment. Reconcile cursors after any rollback; never reset the working stack as routine troubleshooting. Backup readability/integrity is checked; destructive restore over the working stack has not been performed.
+
+## Editorial collaboration
+
+Your initial Slack message is now saved as creator direction, passed into angle generation and subsequent work, and snapshotted on new versions. **How this version was made** shows the chosen angle, actual recorded actions, their times, and source Switch message IDs. Existing conversations are not backfilled or invented.
+
+`revise chapters <direction>` updates navigation and the description timestamp block together while preserving unrelated posts. Invalid boundaries are rejected before saving. A new version requires a fresh review and approval. `fix F1 v<number>` targets the named finding in that exact current version and sends a real Reviewer handoff. Reviewer rechecks all assets so unrelated blocking findings cannot disappear from the review simply because another asset changed.
+
+`accept F1 v<number> <reason>` is an explicit creator decision about a model finding, not automatic approval. Reasons must be at least eight characters; deterministic errors cannot be accepted away. Decisions do not transfer to a new version.
+
+`glossary "original spelling" => "preferred spelling"` records a creator-confirmed project term. It guides subsequent generation and revisions without modifying original captions, historical packs, or verbatim quotations. Request an asset revision to apply the spelling. Cross-project learned preferences and video clip rendering are outside this version.
+
+Use `@producer help` for commands. When more than one project uses the room, prefix commands with `project <id>`. The app provides version-specific copyable Slack commands. No approval happens in the web interface.

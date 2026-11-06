@@ -32,3 +32,7 @@ SKILL.md
 __pycache__/
 *.py[cod]
 .ruff_cache/
+
+# Safe setup templates contain placeholders only.
+!.env.example
+!**/.env.example

@@ -13,7 +13,9 @@
     "agents:register": "tsx scripts/register-agents.ts",
     "switch:setup": "python3 scripts/setup-switch.py",
     "format": "prettier --write \"{src,scripts,tests,web}/**/*.{ts,tsx,css,html}\" vite.config.ts",
-    "format:check": "prettier --check \"{src,scripts,tests,web}/**/*.{ts,tsx,css,html}\" vite.config.ts"
+    "format:check": "prettier --check \"{src,scripts,tests,web}/**/*.{ts,tsx,css,html}\" vite.config.ts",
+    "test:browser": "playwright test tests/browser/workspace.spec.ts",
+    "test:browser:live": "playwright test tests/browser/live.spec.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
@@ -29,6 +31,7 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@tailwindcss/vite": "^4.3.4",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^24.0.0",

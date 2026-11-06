@@ -49,7 +49,11 @@ export type Pack = {
   version: number;
   createdAt: string;
   content: Content;
-  changed: AssetName[] | ['all'];
+  changed: (AssetName | 'chapters')[] | ['all'];
+  creatorRequest?: string;
+  brief?: string;
+  findingDecisions?: { findingId: string; reason: string; creatorId: string; at: string }[];
+  fixesFinding?: { version: number; findingId: string; explanation: string };
   review?: z.infer<typeof Review>;
   checks?: Issue[];
 };
@@ -64,6 +68,9 @@ export type Project = {
   segments: Segment[];
   angles?: z.infer<typeof Angles>['angles'];
   brief?: string;
+  creatorRequest?: string;
+  glossary?: { from: string; to: string; creatorId: string; at: string }[];
+  history?: EditorialEvent[];
   packs: Pack[];
   approvals: {
     version: number;
@@ -72,6 +79,14 @@ export type Project = {
     at: string;
   }[];
   fixture: boolean;
+};
+export type EditorialEvent = {
+  id: string;
+  at: string;
+  actor: 'Creator' | 'Producer' | 'Reviewer';
+  label: string;
+  version?: number;
+  messageId: string;
 };
 export type Issue = {
   assetId: string;
@@ -260,6 +275,64 @@ export const revise = (
     createdAt: new Date().toISOString(),
     content,
     changed: [name],
+    creatorRequest: previous.creatorRequest,
+    brief: previous.brief,
+  };
+};
+
+export const findingId = (index: number) => `F${index + 1}`;
+
+export const unresolvedFindings = (pack: Pack) =>
+  (pack.review?.findings ?? []).filter(
+    (finding, index) =>
+      finding.severity === 'error' &&
+      !pack.findingDecisions?.some((decision) => decision.findingId === findingId(index)),
+  );
+
+export const decideFinding = (
+  project: Project,
+  version: number,
+  id: string,
+  reason: string,
+  sender: string,
+  room: string,
+) => {
+  const pack = project.packs.at(-1);
+  if (sender !== project.creatorId || room !== project.roomId || pack?.version !== version)
+    throw Error('Finding decisions require the linked creator, correct room, and current version');
+  if (project.approvals.some((a) => a.version === version))
+    throw Error('An approved version cannot receive new review decisions');
+  const index = Number(id.slice(1)) - 1;
+  if (!/^F[1-9]\d*$/.test(id) || !pack.review?.findings[index])
+    throw Error('Unknown review finding for this version');
+  if (reason.trim().length < 8) throw Error('Explain the decision in at least 8 characters');
+  if (!pack.findingDecisions?.some((d) => d.findingId === id))
+    (pack.findingDecisions ??= []).push({
+      findingId: id,
+      reason: reason.trim(),
+      creatorId: sender,
+      at: new Date().toISOString(),
+    });
+};
+
+// Replace only the timestamp block; never regenerate unrelated description prose.
+export const reviseChapters = (previous: Pack, chapters: Content['chapters']): Pack => {
+  const content = structuredClone(previous.content);
+  content.chapters = structuredClone(chapters);
+  const text = chapters.map((c) => `${timestamp(c.start)} ${c.title}`).join('\n');
+  const old = content.assets.description;
+  const block = /^(?:\d+:)?\d{1,2}:\d{2}[ \t]+[^\n]+(?:\n(?:\d+:)?\d{1,2}:\d{2}[ \t]+[^\n]+)*/m;
+  const description = block.test(old.content)
+    ? old.content.replace(block, () => text)
+    : `${old.content.trimEnd()}\n\nChapters\n${text}`;
+  content.assets.description = { ...old, id: randomUUID(), content: description };
+  return {
+    version: previous.version + 1,
+    createdAt: new Date().toISOString(),
+    content,
+    changed: ['chapters', 'description'],
+    creatorRequest: previous.creatorRequest,
+    brief: previous.brief,
   };
 };
 
@@ -275,6 +348,10 @@ export const approve = (
     throw Error('Approval requires linked creator, correct room, and current exact version');
   if (!pack.review || pack.checks?.some((x) => x.severity === 'error'))
     throw Error('Review and passing deterministic checks required');
+  if (unresolvedFindings(pack).length)
+    throw Error(
+      'Resolve blocking reviewer findings before approval: fix F<number> v<number> or explicitly accept F<number> v<number> <reason>',
+    );
   if (!project.approvals.some((a) => a.version === version))
     project.approvals.push({ version, creatorId: sender, messageId, at: new Date().toISOString() });
 };

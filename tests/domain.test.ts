@@ -214,3 +214,72 @@ test('evidence classification preserves actual direct quotes and corrects paraph
     validatePack(p, p.packs[0].content).some((i) => i.explanation.includes('Quote does not match')),
   );
 });
+
+test('mocked transport: permanent failures stop and transient retries are bounded', async () => {
+  const { Workflow } = await import('../src/workflow.js');
+  const store = new Store(':memory:');
+  const workflow = new Workflow(store);
+  workflow.clients.producer = { connected: true } as any;
+  store.enqueue('producer', 'room', { payload: { message_id: 'permanent' } });
+  workflow.process = async () => {
+    throw Object.assign(new Error('invalid request'), { status: 400 });
+  };
+  await workflow.tick();
+  assert.deepEqual(
+    store.db.prepare('SELECT status, attempts FROM jobs WHERE id=?').get('producer:permanent'),
+    { status: 'failed', attempts: 1 },
+  );
+  store.enqueue('producer', 'room', { payload: { message_id: 'transient' } });
+  workflow.process = async () => {
+    throw Object.assign(new Error('rate limited'), { status: 429 });
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    store.db.prepare('UPDATE jobs SET next_at=0').run();
+    await workflow.tick();
+  }
+  assert.deepEqual(
+    store.db.prepare('SELECT status, attempts FROM jobs WHERE id=?').get('producer:transient'),
+    { status: 'failed', attempts: 3 },
+  );
+  store.db.close();
+});
+
+test('mocked Switch operations: ambiguous and agent-originated approvals are rejected', async () => {
+  const { Workflow } = await import('../src/workflow.js');
+  const store = new Store(':memory:');
+  const p = project();
+  store.save(p);
+  const workflow = new Workflow(store);
+  const replies: string[] = [];
+  const client = {
+    name: 'producer',
+    op: async (_name: string, args: any) => {
+      replies.push(args.body);
+      return { event_id: 'mock' };
+    },
+  } as any;
+  const event = (sender: string, body: string) => ({
+    type: 'message',
+    room_id: 'room',
+    payload: { sender, body, message_id: body + sender },
+  });
+  for (const [sender, body] of [
+    ['human', '@producer approve'],
+    ['agent', '@producer approve v1'],
+  ]) {
+    await workflow.process(
+      {
+        id: body + sender,
+        agent: 'producer',
+        room: 'room',
+        attempts: 0,
+        event: JSON.stringify(event(sender, body)),
+      },
+      client,
+    );
+  }
+  assert.equal(store.get(p.id)!.approvals.length, 0);
+  assert.ok(replies.some((reply) => reply.includes('exact command')));
+  assert.ok(replies.some((reply) => reply.includes('Only the linked creator')));
+  store.db.close();
+});
