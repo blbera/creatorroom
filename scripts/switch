@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")/.."
+exec docker compose --project-name creatorroom-switch --env-file infra/switch/.env -f infra/switch/upstream.compose.yaml -f infra/switch/override.compose.yaml --profile gateway "$@"
