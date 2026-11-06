@@ -28,3 +28,7 @@ SKILL.md
 **/SKILL.md
 .agents/
 .codex/
+
+__pycache__/
+*.py[cod]
+.ruff_cache/

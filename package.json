@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "models": "tsx src/model.ts --list",
     "agents:register": "tsx scripts/register-agents.ts",
-    "switch:setup": "python3 scripts/setup-switch.py"
+    "switch:setup": "python3 scripts/setup-switch.py",
+    "format": "prettier --write \"{src,scripts,tests,web}/**/*.{ts,tsx}\" vite.config.ts",
+    "format:check": "prettier --check \"{src,scripts,tests,web}/**/*.{ts,tsx}\" vite.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
@@ -32,6 +34,7 @@
     "@types/react-dom": "^19.2.0",
     "@types/ws": "^8.18.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "prettier": "^3.9.10",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vite": "^8.3.6"

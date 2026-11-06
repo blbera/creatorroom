@@ -1,38 +1,569 @@
-import React,{useEffect,useRef,useState} from 'react';import{createRoot}from'react-dom/client';import type{Project,Pack,AssetName}from'../src/domain';import './style.css';
-const names:Record<AssetName,string>={description:'YouTube description',x:'X thread',linkedin:'LinkedIn',newsletter:'Newsletter'};
-function stamp(n:number){const h=Math.floor(n/3600);return(h?`${h}:`:'')+`${Math.floor(n%3600/60)}`.padStart(2,'0')+':'+`${Math.floor(n%60)}`.padStart(2,'0');}
-async function api(url:string,options?:RequestInit){const r=await fetch(url,options);const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d;}
-let ytPromise:Promise<any>|undefined;
-function youtube(){if((window as any).YT?.Player)return Promise.resolve((window as any).YT);return ytPromise??=new Promise((resolve,reject)=>{(window as any).onYouTubeIframeAPIReady=()=>resolve((window as any).YT);const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.onerror=()=>reject(Error('YouTube API could not load'));document.head.append(script);});}
-function Player({videoId,seek}:{videoId:string|null,seek:{time:number,nonce:number}|null}){
- const node=useRef<HTMLDivElement>(null),player=useRef<any>(null);const[ready,setReady]=useState(false),[error,setError]=useState('');
- useEffect(()=>{let cancelled=false;setReady(false);setError('');if(!videoId)return;youtube().then(YT=>{if(cancelled||!node.current)return;const mount=document.createElement('div');node.current.replaceChildren(mount);player.current=new YT.Player(mount,{videoId,width:'100%',height:'100%',playerVars:{controls:1,origin:location.origin,playsinline:1},events:{onReady:()=>setReady(true),onError:(e:any)=>setError(`YouTube playback error ${e.data}. Embedding may be restricted; open the video on YouTube.`)}});}).catch(()=>setError('YouTube player unavailable. Check your connection or open on YouTube.'));return()=>{cancelled=true;player.current?.destroy();player.current=null;};},[videoId]);
- useEffect(()=>{if(ready&&seek)player.current?.seekTo(seek.time,true);},[seek,ready]);
- return <><div className="video" ref={node}>{!videoId&&<div className="video-empty"><span>ORIGINAL TEST FIXTURE</span><h2>Words first.<br/>Your video comes next.</h2><p>No video is paired with this synthetic test transcript.</p></div>}</div>{videoId&&<div className="player-status"><span>{error|| (ready?'Player ready · section seeking available':'Loading official YouTube player…')}</span><a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">Open on YouTube ↗</a></div>}</>;
-}
-function App(){
- const[projects,setProjects]=useState<any[]>([]),[project,setProject]=useState<Project|null>(null),[status,setStatus]=useState<any>(null),[error,setError]=useState(''),[version,setVersion]=useState(0),[tab,setTab]=useState<AssetName>('description'),[query,setQuery]=useState(''),[seek,setSeek]=useState<{time:number,nonce:number}|null>(null),[showImport,setShowImport]=useState(false),[diff,setDiff]=useState(false),[busy,setBusy]=useState(false);
- const selectedId=new URLSearchParams(location.search).get('project');
- async function load(id?:string){try{const list=await api('/api/projects');setProjects(list);const key=id||project?.id||selectedId||list[0]?.id;if(key){const p=await api('/api/projects/'+key);setProject(p);setVersion(v=>v&&p.packs.some((x:Pack)=>x.version===v)?v:p.packs.at(-1)?.version??0);}setStatus(await api('/api/status'));setError('');}catch(e){setError((e as Error).message);}}
- useEffect(()=>{void load();const interval=setInterval(()=>void load(),5000);return()=>clearInterval(interval);},[]);
- const pack=project?.packs.find(p=>p.version===version),previous=project?.packs.find(p=>p.version===version-1);const approved=project?.approvals.some(a=>a.version===version);const jump=(time:number)=>setSeek({time,nonce:Date.now()});
- async function importProject(e:React.FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);try{const p=await api('/api/projects',{method:'POST',body:new FormData(e.currentTarget)});setShowImport(false);await load(p.id);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- return <div className="shell"><aside className="rail"><a className="brand" href="/">c<span>r</span><i>●</i></a><div className="rail-word">CREATORROOM</div><div className="rail-bottom">A ROOM FOR<br/>YOUR IDEAS.</div></aside><main><header><div className="wordmark">CreatorRoom<span>EDITORIAL WORKSPACE</span></div><div className="header-actions"><span className={'connection '+(status?.switchHealthy?'online':'')} aria-live="polite">{status?.switchHealthy?'Switch connected':'Switch disconnected'}</span><button className="dark" onClick={()=>setShowImport(true)}>+ New project</button></div></header>
- {error&&<div role="alert" className="alert">{error}</div>}
- <section className="intro"><div><div className="eyebrow">FROM LONG FORM TO WHAT’S NEXT</div><h1>{project?.title||'Give your ideas a second life.'}</h1><p className="subtitle">One source. A considered content pack. Your final say.</p></div><label className="project-select">WORKSPACE<select aria-label="Select project" value={project?.id||''} onChange={e=>{setVersion(0);void load(e.target.value);history.replaceState(null,'','?project='+e.target.value);}}>{!projects.length&&<option>No projects yet</option>}{projects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label></section>
- <div className="statusbar"><span className="badge">{project?.fixture?'Fixture · not a live demo':approved?`Creator approved v${version}`:pack?.review?`Reviewed draft v${version}`:pack?'Awaiting review':'Awaiting creator brief'}</span><span>Producer: {status?.workers?.producer?.connected?'connected':'disconnected'}</span><span>Reviewer: {status?.workers?.reviewer?.connected?'connected':'disconnected'}</span><span>{status?.modelConfigured?status.model:'Model setup pending'}</span></div>
- {project?.fixture&&<div className="fixture-note">Original fixture content for reproducible UI tests. No model, Slack review, approval, or real video playback is represented here.</div>}
- <div className="workspace"><section className="source-column"><div className="section-heading"><h2>01 / The source</h2><span>{project?stamp(project.duration):'—'} MIN:SEC</span></div><Player videoId={project?.videoId??null} seek={seek}/>
- <div className="section-heading small"><h3>Navigation sections</h3><span>CREATORROOM NAVIGATION</span></div><p className="micro">These sections navigate this embedded player. They do not enable native YouTube chapters on your channel.</p><div className="chapters">{pack?.content.chapters.map((c,i)=><button key={i} disabled={!project?.videoId} onClick={()=>jump(c.start)}><time>{stamp(c.start)}</time><span>{c.title}</span><b>↗</b></button>)}{!pack&&<p className="empty">Sections appear after you choose a creative angle in Slack.</p>}</div>
- <div className="transcript"><div className="section-heading small"><h3>Transcript</h3><span>{project?.segments.length??0} SOURCE SEGMENTS</span></div><input aria-label="Search transcript" type="search" placeholder="Search a word, find the moment…" value={query} onChange={e=>setQuery(e.target.value)}/><div className="transcript-scroll">{project?.segments.filter(s=>s.text.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(s=><div className="cue" key={s.id} id={s.id}><button disabled={!project.videoId} onClick={()=>jump(s.start)} aria-label={`Seek to ${stamp(s.start)}`}>{stamp(s.start)}</button><p>{s.text}</p></div>)}{project&&!project.segments.some(s=>s.text.toLowerCase().includes(query.toLowerCase()))&&<p className="empty">No matching segments.</p>}</div></div></section>
- <section className="pack-column"><div className="section-heading"><h2>02 / The content pack</h2><select aria-label="Pack version" value={version} onChange={e=>setVersion(Number(e.target.value))}>{!project?.packs.length&&<option value="0">No version yet</option>}{project?.packs.map(p=><option key={p.version} value={p.version}>Version {p.version}</option>)}</select></div>
- <div className="tabs" role="tablist" aria-label="Content formats">{(Object.keys(names) as AssetName[]).map(n=><button key={n} role="tab" aria-selected={tab===n} onClick={()=>setTab(n)}>{names[n]}</button>)}</div>
- <div className="asset"><div className="asset-top"><span className="eyebrow">{names[tab]}</span><button disabled={!previous} onClick={()=>setDiff(!diff)}>{diff?'Hide diff':'Compare previous'}</button></div>{pack?<><div className="asset-content" role="tabpanel">{pack.content.assets[tab].content}</div>{diff&&previous&&<div className="diff"><h4>Version {version-1} → {version}</h4>{previous.content.assets[tab].content===pack.content.assets[tab].content?<p>Unchanged. Content and asset ID preserved.</p>:<><del>{previous.content.assets[tab].content}</del><ins>{pack.content.assets[tab].content}</ins></>}</div>}<details className="evidence" open><summary>Source evidence · {pack.content.assets[tab].evidence.length} mapped claims</summary>{pack.content.assets[tab].evidence.map((e,i)=><div key={i}><p>{e.claim}</p>{e.quote&&<blockquote>“{e.quote}”</blockquote>}{e.segments.map(id=>{const s=project!.segments.find(s=>s.id===id);return s?<button className="evidence-source" key={id} onClick={()=>{jump(s.start);document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'center'});}}>{stamp(s.start)} · {s.text}</button>:<span key={id}>Invalid source reference</span>;})}</div>)}</details></>:<div className="empty asset-empty"><h3>Your source is the starting point.</h3><p>Brief Producer in Slack, choose one of two angles, and your first version will appear here.</p></div>}</div>
- <section className="review"><div className="section-heading small"><h3>Reviewer’s desk</h3><span>{pack?.review?'REVIEW RECEIVED':'AWAITING SWITCH HANDOFF'}</span></div><p className="micro">Supported by transcript. This is not independent factual verification.</p>{pack?.review?.findings.length===0&&<p>Reviewer returned no issues.</p>}{[...(pack?.review?.findings??[]),...(pack?.checks??[])].map((f,i)=><article className="finding" key={i}><span>{f.severity.toUpperCase()} · {f.assetId}</span><p>{f.explanation}</p><p className="micro">{f.suggestion}</p>{f.segments.map(id=>{const s=project?.segments.find(s=>s.id===id);return s&&<button key={id} onClick={()=>jump(s.start)}>{stamp(s.start)} · source</button>;})}</article>)}{!pack?.review&&<p className="empty">No review has been received for this version.</p>}</section>
- <div className="exports"><div><h3>Take this version with you.</h3><p>{approved?`Approved v${version}`:`Draft v${version||'—'} · approval pending`}</p></div><div>{['markdown','chapters','json'].map(f=><a key={f} aria-disabled={!pack} className={!pack?'disabled':''} href={pack?`/api/projects/${project!.id}/exports/${version}/${f}`:undefined}>{f==='markdown'?'Markdown':f==='chapters'?'Chapter text':'JSON'} ↓</a>)}</div></div>
- </section></div>
- <section className="slack"><div className="slack-mark">#</div><div><h3>The conversation stays in Slack.</h3><p>Brief, choose, revise, and approve through Switch. Approval always names an exact version.</p><code>@producer angle 1</code><code>@producer revise linkedin make the opening more direct</code><code>@producer approve v2</code>{project&&!project.fixture&&<p className="micro">For multiple projects include <code>project {project.id}</code> before the command.</p>}</div>{status?.slackUrl?<a className="dark button" href={status.slackUrl} target="_blank" rel="noreferrer">Open demo room ↗</a>:<span>Slack setup pending</span>}</section><footer>CREATORROOM <span>Local workspace · localhost links open only on this computer.</span></footer>
- {showImport&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="import-title"><button className="close" aria-label="Close import" onClick={()=>setShowImport(false)}>×</button><h2 id="import-title">Start with your source.</h2><p>Use your own video and its matching timestamped transcript.</p><form onSubmit={importProject}><label>Project title<input name="title" required maxLength={200}/></label><label>YouTube URL<input name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…"/></label><label>Confirmed video duration (seconds)<input name="duration" type="number" min="1" max="86400" required/></label><label>Audience, tone, examples, preferred and prohibited phrases<textarea name="profile" maxLength={8000} required/></label><label>Matching transcript · SRT / VTT · max 2 MiB<input name="transcript" type="file" accept=".srt,.vtt" required/></label><p className="micro">The linked creator and designated Switch room are assigned by setup, not inferred from uploaded text.</p><button className="dark" disabled={busy}>{busy?'Importing…':'Create project'}</button></form></section></div>}
- </main></div>;
-}
-createRoot(document.getElementById('root')!).render(<App/>);
+import React, { useEffect, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { Project, Pack, AssetName } from '../src/domain';
+import './style.css';
+
+const names: Record<AssetName, string> = {
+  description: 'YouTube description',
+  x: 'X thread',
+  linkedin: 'LinkedIn',
+  newsletter: 'Newsletter',
+};
+
+const stamp = (n: number) => {
+  const h = Math.floor(n / 3600);
+  return (
+    (h ? `${h}:` : '') +
+    `${Math.floor((n % 3600) / 60)}`.padStart(2, '0') +
+    ':' +
+    `${Math.floor(n % 60)}`.padStart(2, '0')
+  );
+};
+
+const api = async (url: string, options?: RequestInit) => {
+  const r = await fetch(url, options);
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error || 'Request failed');
+  return d;
+};
+
+let ytPromise: Promise<any> | undefined;
+
+const youtube = () => {
+  if ((window as any).YT?.Player) return Promise.resolve((window as any).YT);
+  return (ytPromise ??= new Promise((resolve, reject) => {
+    (window as any).onYouTubeIframeAPIReady = () => resolve((window as any).YT);
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.onerror = () => reject(Error('YouTube API could not load'));
+    document.head.append(script);
+  }));
+};
+
+const Player = ({
+  videoId,
+  seek,
+}: {
+  videoId: string | null;
+  seek: {
+    time: number;
+    nonce: number;
+  } | null;
+}) => {
+  const node = useRef<HTMLDivElement>(null),
+    player = useRef<any>(null);
+  const [ready, setReady] = useState(false),
+    [error, setError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    setError('');
+    if (!videoId) return;
+    youtube()
+      .then((YT) => {
+        if (cancelled || !node.current) return;
+        const mount = document.createElement('div');
+        node.current.replaceChildren(mount);
+        player.current = new YT.Player(mount, {
+          videoId,
+          width: '100%',
+          height: '100%',
+          playerVars: { controls: 1, origin: location.origin, playsinline: 1 },
+          events: {
+            onReady: () => setReady(true),
+            onError: (e: any) =>
+              setError(
+                `YouTube playback error ${e.data}. Embedding may be restricted; open the video on YouTube.`,
+              ),
+          },
+        });
+      })
+      .catch(() =>
+        setError('YouTube player unavailable. Check your connection or open on YouTube.'),
+      );
+    return () => {
+      cancelled = true;
+      player.current?.destroy();
+      player.current = null;
+    };
+  }, [videoId]);
+  useEffect(() => {
+    if (ready && seek) player.current?.seekTo(seek.time, true);
+  }, [seek, ready]);
+  return (
+    <>
+      <div className="video" ref={node}>
+        {!videoId && (
+          <div className="video-empty">
+            <span>ORIGINAL TEST FIXTURE</span>
+            <h2>
+              Words first.
+              <br />
+              Your video comes next.
+            </h2>
+            <p>No video is paired with this synthetic test transcript.</p>
+          </div>
+        )}
+      </div>
+      {videoId && (
+        <div className="player-status">
+          <span>
+            {error ||
+              (ready
+                ? 'Player ready · section seeking available'
+                : 'Loading official YouTube player…')}
+          </span>
+          <a href={`https://www.youtube.com/watch?v=${videoId}`} target="_blank" rel="noreferrer">
+            Open on YouTube ↗
+          </a>
+        </div>
+      )}
+    </>
+  );
+};
+
+const App = () => {
+  const [projects, setProjects] = useState<any[]>([]),
+    [project, setProject] = useState<Project | null>(null),
+    [status, setStatus] = useState<any>(null),
+    [error, setError] = useState(''),
+    [version, setVersion] = useState(0),
+    [tab, setTab] = useState<AssetName>('description'),
+    [query, setQuery] = useState(''),
+    [seek, setSeek] = useState<{
+      time: number;
+      nonce: number;
+    } | null>(null),
+    [showImport, setShowImport] = useState(false),
+    [diff, setDiff] = useState(false),
+    [busy, setBusy] = useState(false);
+  const selectedId = new URLSearchParams(location.search).get('project');
+
+  const load = async (id?: string) => {
+    try {
+      const list = await api('/api/projects');
+      setProjects(list);
+      const key = id || project?.id || selectedId || list[0]?.id;
+      if (key) {
+        const p = await api('/api/projects/' + key);
+        setProject(p);
+        setVersion((v) =>
+          v && p.packs.some((x: Pack) => x.version === v) ? v : (p.packs.at(-1)?.version ?? 0),
+        );
+      }
+      setStatus(await api('/api/status'));
+      setError('');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    const interval = setInterval(() => void load(), 5000);
+    return () => clearInterval(interval);
+  }, []);
+  const pack = project?.packs.find((p) => p.version === version),
+    previous = project?.packs.find((p) => p.version === version - 1);
+  const approved = project?.approvals.some((a) => a.version === version);
+
+  const jump = (time: number) => setSeek({ time, nonce: Date.now() });
+
+  const importProject = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const p = await api('/api/projects', { method: 'POST', body: new FormData(e.currentTarget) });
+      setShowImport(false);
+      await load(p.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="shell">
+      <aside className="rail">
+        <a className="brand" href="/">
+          c<span>r</span>
+          <i>●</i>
+        </a>
+        <div className="rail-word">CREATORROOM</div>
+        <div className="rail-bottom">
+          A ROOM FOR
+          <br />
+          YOUR IDEAS.
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div className="wordmark">
+            CreatorRoom<span>EDITORIAL WORKSPACE</span>
+          </div>
+          <div className="header-actions">
+            <span
+              className={'connection ' + (status?.switchHealthy ? 'online' : '')}
+              aria-live="polite"
+            >
+              {status?.switchHealthy ? 'Switch connected' : 'Switch disconnected'}
+            </span>
+            <button className="dark" onClick={() => setShowImport(true)}>
+              + New project
+            </button>
+          </div>
+        </header>
+        {error && (
+          <div role="alert" className="alert">
+            {error}
+          </div>
+        )}
+        <section className="intro">
+          <div>
+            <div className="eyebrow">FROM LONG FORM TO WHAT’S NEXT</div>
+            <h1>{project?.title || 'Give your ideas a second life.'}</h1>
+            <p className="subtitle">One source. A considered content pack. Your final say.</p>
+          </div>
+          <label className="project-select">
+            WORKSPACE
+            <select
+              aria-label="Select project"
+              value={project?.id || ''}
+              onChange={(e) => {
+                setVersion(0);
+                void load(e.target.value);
+                history.replaceState(null, '', '?project=' + e.target.value);
+              }}
+            >
+              {!projects.length && <option>No projects yet</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+        <div className="statusbar">
+          <span className="badge">
+            {project?.fixture
+              ? 'Fixture · not a live demo'
+              : approved
+                ? `Creator approved v${version}`
+                : pack?.review
+                  ? `Reviewed draft v${version}`
+                  : pack
+                    ? 'Awaiting review'
+                    : 'Awaiting creator brief'}
+          </span>
+          <span>
+            Producer: {status?.workers?.producer?.connected ? 'connected' : 'disconnected'}
+          </span>
+          <span>
+            Reviewer: {status?.workers?.reviewer?.connected ? 'connected' : 'disconnected'}
+          </span>
+          <span>{status?.modelConfigured ? status.model : 'Model setup pending'}</span>
+        </div>
+        {project?.fixture && (
+          <div className="fixture-note">
+            Original fixture content for reproducible UI tests. No model, Slack review, approval, or
+            real video playback is represented here.
+          </div>
+        )}
+        <div className="workspace">
+          <section className="source-column">
+            <div className="section-heading">
+              <h2>01 / The source</h2>
+              <span>{project ? stamp(project.duration) : '—'} MIN:SEC</span>
+            </div>
+            <Player videoId={project?.videoId ?? null} seek={seek} />
+            <div className="section-heading small">
+              <h3>Navigation sections</h3>
+              <span>CREATORROOM NAVIGATION</span>
+            </div>
+            <p className="micro">
+              These sections navigate this embedded player. They do not enable native YouTube
+              chapters on your channel.
+            </p>
+            <div className="chapters">
+              {pack?.content.chapters.map((c, i) => (
+                <button key={i} disabled={!project?.videoId} onClick={() => jump(c.start)}>
+                  <time>{stamp(c.start)}</time>
+                  <span>{c.title}</span>
+                  <b>↗</b>
+                </button>
+              ))}
+              {!pack && (
+                <p className="empty">Sections appear after you choose a creative angle in Slack.</p>
+              )}
+            </div>
+            <div className="transcript">
+              <div className="section-heading small">
+                <h3>Transcript</h3>
+                <span>{project?.segments.length ?? 0} SOURCE SEGMENTS</span>
+              </div>
+              <input
+                aria-label="Search transcript"
+                type="search"
+                placeholder="Search a word, find the moment…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <div className="transcript-scroll">
+                {project?.segments
+                  .filter((s) => s.text.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+                  .map((s) => (
+                    <div className="cue" key={s.id} id={s.id}>
+                      <button
+                        disabled={!project.videoId}
+                        onClick={() => jump(s.start)}
+                        aria-label={`Seek to ${stamp(s.start)}`}
+                      >
+                        {stamp(s.start)}
+                      </button>
+                      <p>{s.text}</p>
+                    </div>
+                  ))}
+                {project &&
+                  !project.segments.some((s) =>
+                    s.text.toLowerCase().includes(query.toLowerCase()),
+                  ) && <p className="empty">No matching segments.</p>}
+              </div>
+            </div>
+          </section>
+          <section className="pack-column">
+            <div className="section-heading">
+              <h2>02 / The content pack</h2>
+              <select
+                aria-label="Pack version"
+                value={version}
+                onChange={(e) => setVersion(Number(e.target.value))}
+              >
+                {!project?.packs.length && <option value="0">No version yet</option>}
+                {project?.packs.map((p) => (
+                  <option key={p.version} value={p.version}>
+                    Version {p.version}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tabs" role="tablist" aria-label="Content formats">
+              {(Object.keys(names) as AssetName[]).map((n) => (
+                <button key={n} role="tab" aria-selected={tab === n} onClick={() => setTab(n)}>
+                  {names[n]}
+                </button>
+              ))}
+            </div>
+            <div className="asset">
+              <div className="asset-top">
+                <span className="eyebrow">{names[tab]}</span>
+                <button disabled={!previous} onClick={() => setDiff(!diff)}>
+                  {diff ? 'Hide diff' : 'Compare previous'}
+                </button>
+              </div>
+              {pack ? (
+                <>
+                  <div className="asset-content" role="tabpanel">
+                    {pack.content.assets[tab].content}
+                  </div>
+                  {diff && previous && (
+                    <div className="diff">
+                      <h4>
+                        Version {version - 1} → {version}
+                      </h4>
+                      {previous.content.assets[tab].content === pack.content.assets[tab].content ? (
+                        <p>Unchanged. Content and asset ID preserved.</p>
+                      ) : (
+                        <>
+                          <del>{previous.content.assets[tab].content}</del>
+                          <ins>{pack.content.assets[tab].content}</ins>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <details className="evidence" open>
+                    <summary>
+                      Source evidence · {pack.content.assets[tab].evidence.length} mapped claims
+                    </summary>
+                    {pack.content.assets[tab].evidence.map((e, i) => (
+                      <div key={i}>
+                        <p>{e.claim}</p>
+                        {e.quote && <blockquote>“{e.quote}”</blockquote>}
+                        {e.segments.map((id) => {
+                          const s = project!.segments.find((s) => s.id === id);
+                          return s ? (
+                            <button
+                              className="evidence-source"
+                              key={id}
+                              onClick={() => {
+                                jump(s.start);
+                                document
+                                  .getElementById(id)
+                                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }}
+                            >
+                              {stamp(s.start)} · {s.text}
+                            </button>
+                          ) : (
+                            <span key={id}>Invalid source reference</span>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </details>
+                </>
+              ) : (
+                <div className="empty asset-empty">
+                  <h3>Your source is the starting point.</h3>
+                  <p>
+                    Brief Producer in Slack, choose one of two angles, and your first version will
+                    appear here.
+                  </p>
+                </div>
+              )}
+            </div>
+            <section className="review">
+              <div className="section-heading small">
+                <h3>Reviewer’s desk</h3>
+                <span>{pack?.review ? 'REVIEW RECEIVED' : 'AWAITING SWITCH HANDOFF'}</span>
+              </div>
+              <p className="micro">
+                Supported by transcript. This is not independent factual verification.
+              </p>
+              {pack?.review?.findings.length === 0 && <p>Reviewer returned no issues.</p>}
+              {[...(pack?.review?.findings ?? []), ...(pack?.checks ?? [])].map((f, i) => (
+                <article className="finding" key={i}>
+                  <span>
+                    {f.severity.toUpperCase()} · {f.assetId}
+                  </span>
+                  <p>{f.explanation}</p>
+                  <p className="micro">{f.suggestion}</p>
+                  {f.segments.map((id) => {
+                    const s = project?.segments.find((s) => s.id === id);
+                    return (
+                      s && (
+                        <button key={id} onClick={() => jump(s.start)}>
+                          {stamp(s.start)} · source
+                        </button>
+                      )
+                    );
+                  })}
+                </article>
+              ))}
+              {!pack?.review && (
+                <p className="empty">No review has been received for this version.</p>
+              )}
+            </section>
+            <div className="exports">
+              <div>
+                <h3>Take this version with you.</h3>
+                <p>
+                  {approved
+                    ? `Approved v${version}`
+                    : `Draft v${version || '—'} · approval pending`}
+                </p>
+              </div>
+              <div>
+                {['markdown', 'chapters', 'json'].map((f) => (
+                  <a
+                    key={f}
+                    aria-disabled={!pack}
+                    className={!pack ? 'disabled' : ''}
+                    href={pack ? `/api/projects/${project!.id}/exports/${version}/${f}` : undefined}
+                  >
+                    {f === 'markdown' ? 'Markdown' : f === 'chapters' ? 'Chapter text' : 'JSON'} ↓
+                  </a>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+        <section className="slack">
+          <div className="slack-mark">#</div>
+          <div>
+            <h3>The conversation stays in Slack.</h3>
+            <p>
+              Brief, choose, revise, and approve through Switch. Approval always names an exact
+              version.
+            </p>
+            <code>@producer angle 1</code>
+            <code>@producer revise linkedin make the opening more direct</code>
+            <code>@producer approve v2</code>
+            {project && !project.fixture && (
+              <p className="micro">
+                For multiple projects include <code>project {project.id}</code> before the command.
+              </p>
+            )}
+          </div>
+          {status?.slackUrl ? (
+            <a className="dark button" href={status.slackUrl} target="_blank" rel="noreferrer">
+              Open demo room ↗
+            </a>
+          ) : (
+            <span>Slack setup pending</span>
+          )}
+        </section>
+        <footer>
+          CREATORROOM <span>Local workspace · localhost links open only on this computer.</span>
+        </footer>
+        {showImport && (
+          <div className="modal-backdrop">
+            <section
+              className="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="import-title"
+            >
+              <button
+                className="close"
+                aria-label="Close import"
+                onClick={() => setShowImport(false)}
+              >
+                ×
+              </button>
+              <h2 id="import-title">Start with your source.</h2>
+              <p>Use your own video and its matching timestamped transcript.</p>
+              <form onSubmit={importProject}>
+                <label>
+                  Project title
+                  <input name="title" required maxLength={200} />
+                </label>
+                <label>
+                  YouTube URL
+                  <input
+                    name="url"
+                    type="url"
+                    required
+                    placeholder="https://www.youtube.com/watch?v=…"
+                  />
+                </label>
+                <label>
+                  Confirmed video duration (seconds)
+                  <input name="duration" type="number" min="1" max="86400" required />
+                </label>
+                <label>
+                  Audience, tone, examples, preferred and prohibited phrases
+                  <textarea name="profile" maxLength={8000} required />
+                </label>
+                <label>
+                  Matching transcript · SRT / VTT · max 2 MiB
+                  <input name="transcript" type="file" accept=".srt,.vtt" required />
+                </label>
+                <p className="micro">
+                  The linked creator and designated Switch room are assigned by setup, not inferred
+                  from uploaded text.
+                </p>
+                <button className="dark" disabled={busy}>
+                  {busy ? 'Importing…' : 'Create project'}
+                </button>
+              </form>
+            </section>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+createRoot(document.getElementById('root')!).render(<App />);
