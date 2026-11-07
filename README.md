@@ -10,6 +10,10 @@ Upload your video's transcript, choose a creative angle in Slack, and get a cont
 
 [The workflow](#the-workflow) · [Architecture](#architecture) · [Run locally](#run-locally) · [Development](#development)
 
+![CreatorRoom workflow: choose an angle in Slack, review through Switch, inspect source evidence, and approve an exact version](docs/assets/creatorroom-workflow.gif)
+
+*Choose in Slack. Inspect the source. Approve and export.*
+
 ## What you can do
 
 | Capability | What it gives the creator |
