@@ -137,28 +137,42 @@ const App = () => {
       nonce: number;
     } | null>(null),
     [showImport, setShowImport] = useState(false),
+    [importError, setImportError] = useState(''),
+    [createdProjectId, setCreatedProjectId] = useState(''),
     [diff, setDiff] = useState(false),
     [busy, setBusy] = useState(false);
   const selectedProject = useRef(new URLSearchParams(location.search).get('project'));
+  const loadSequence = useRef(0);
+  const importing = useRef(false);
 
   const load = async (id?: string) => {
+    const sequence = ++loadSequence.current;
     try {
       const list = await api('/api/projects');
+      if (sequence !== loadSequence.current) return;
       setProjects(list);
-      const key = id || selectedProject.current || list[0]?.id;
+      const preferred = id || selectedProject.current;
+      const key = list.some((item: { id: string }) => item.id === preferred)
+        ? preferred
+        : list[0]?.id;
+      selectedProject.current = key || null;
       if (key) {
-        selectedProject.current = key;
         const p = await api('/api/projects/' + key);
-        if (selectedProject.current !== key) return;
+        if (sequence !== loadSequence.current || selectedProject.current !== key) return;
         setProject(p);
         setVersion((v) =>
           v && p.packs.some((x: Pack) => x.version === v) ? v : (p.packs.at(-1)?.version ?? 0),
         );
+      } else {
+        setProject(null);
+        setVersion(0);
       }
-      setStatus(await api('/api/status'));
+      const nextStatus = await api('/api/status');
+      if (sequence !== loadSequence.current) return;
+      setStatus(nextStatus);
       setError('');
     } catch (e) {
-      setError((e as Error).message);
+      if (sequence === loadSequence.current) setError((e as Error).message);
     }
   };
 
@@ -175,14 +189,34 @@ const App = () => {
 
   const importProject = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (importing.current) return;
+    const body = new FormData(e.currentTarget);
+    importing.current = true;
     setBusy(true);
+    setImportError('');
     try {
-      const p = await api('/api/projects', { method: 'POST', body: new FormData(e.currentTarget) });
+      const p: Project = await api('/api/projects', { method: 'POST', body });
+      // The POST already returns the saved project. A background refresh must not
+      // overwrite it, or make a successful import depend on another request.
+      ++loadSequence.current;
+      selectedProject.current = p.id;
+      setProjects((list) => [...list.filter((item) => item.id !== p.id), p]);
+      setProject(p);
+      setVersion(0);
+      setTab('description');
+      setQuery('');
+      setSeek(null);
+      setDiff(false);
+      setError('');
+      setCreatedProjectId(p.id);
+      const url = new URL(location.href);
+      url.searchParams.set('project', p.id);
+      history.replaceState(null, '', url);
       setShowImport(false);
-      await load(p.id);
     } catch (e) {
-      setError((e as Error).message);
+      setImportError((e as Error).message);
     } finally {
+      importing.current = false;
       setBusy(false);
     }
   };
@@ -213,7 +247,13 @@ const App = () => {
             >
               {status?.switchHealthy ? 'Switch connected' : 'Switch disconnected'}
             </span>
-            <button className={cx('dark')} onClick={() => setShowImport(true)}>
+            <button
+              className={cx('dark')}
+              onClick={() => {
+                setImportError('');
+                setShowImport(true);
+              }}
+            >
               + New project
             </button>
           </div>
@@ -222,6 +262,22 @@ const App = () => {
           <div role="alert" className={cx('alert')}>
             {error}
           </div>
+        )}
+        {createdProjectId && project?.id === createdProjectId && (
+          <section className={cx('import-success')} aria-label="Project created">
+            <p role="status">
+              <strong>Project created.</strong> Your source is ready. Brief Producer in Slack to
+              choose a creative angle and generate your first pack.
+            </p>
+            <SlackCommand
+              command={`@producer project ${createdProjectId} brief Focus on one practical lesson for beginners.`}
+            />
+            {status?.slackUrl && (
+              <a href={status.slackUrl} target="_blank" rel="noreferrer">
+                Open Slack ↗
+              </a>
+            )}
+          </section>
         )}
         <section className={cx('intro')}>
           <div>
@@ -586,6 +642,9 @@ const App = () => {
                 <SlackCommand
                   command={`@producer project ${project.id} revise chapters Split the longest section at the next topic change.`}
                 />
+                {pack?.checks?.some(
+                  (issue) => issue.explanation === 'Mapped quote is absent from asset',
+                ) && <SlackCommand command={`@producer project ${project.id} repair evidence`} />}
                 {pack && (
                   <SlackCommand command={`@producer project ${project.id} approve v${version}`} />
                 )}
@@ -624,16 +683,25 @@ const App = () => {
               <button
                 className={cx('close')}
                 aria-label="Close import"
+                disabled={busy}
                 onClick={() => setShowImport(false)}
               >
                 ×
               </button>
               <h2 id="import-title">Start with your source.</h2>
               <p>Use your own video and its matching timestamped transcript.</p>
-              <form onSubmit={importProject}>
+              <form
+                onSubmit={importProject}
+                aria-busy={busy}
+                onInvalidCapture={() =>
+                  setImportError(
+                    'Check the required fields, including the duration in seconds and a matching SRT or VTT transcript.',
+                  )
+                }
+              >
                 <label>
                   Project title
-                  <input name="title" required maxLength={200} />
+                  <input name="title" required maxLength={200} disabled={busy} autoFocus />
                 </label>
                 <label>
                   YouTube URL
@@ -641,26 +709,55 @@ const App = () => {
                     name="url"
                     type="url"
                     required
+                    disabled={busy}
                     placeholder="https://www.youtube.com/watch?v=…"
                   />
                 </label>
                 <label>
                   Confirmed video duration (seconds)
-                  <input name="duration" type="number" min="1" max="86400" required />
+                  <input
+                    name="duration"
+                    type="number"
+                    min="1"
+                    max="86400"
+                    step="any"
+                    required
+                    disabled={busy}
+                  />
+                  <span className={cx('micro')}>
+                    Use the actual duration in seconds. All caption cues must fit within it.
+                  </span>
                 </label>
                 <label>
                   Audience, tone, examples, preferred and prohibited phrases
-                  <textarea name="profile" maxLength={8000} required />
+                  <textarea name="profile" maxLength={8000} required disabled={busy} />
                 </label>
                 <label>
                   Matching transcript · SRT / VTT · max 2 MiB
-                  <input name="transcript" type="file" accept=".srt,.vtt" required />
+                  <input
+                    name="transcript"
+                    type="file"
+                    accept=".srt,.vtt"
+                    required
+                    disabled={busy}
+                  />
                 </label>
                 <p className={cx('micro')}>
                   The linked creator and designated Switch room are assigned by setup, not inferred
                   from uploaded text.
                 </p>
-                <button className={cx('dark')} disabled={busy}>
+                {importError && (
+                  <div role="alert" className={cx('alert')}>
+                    {importError}
+                  </div>
+                )}
+                {busy && (
+                  <p role="status">
+                    Uploading and checking your transcript. This form closes when the project is
+                    saved.
+                  </p>
+                )}
+                <button type="submit" className={cx('dark')} disabled={busy}>
                   {busy ? 'Importing…' : 'Create project'}
                 </button>
               </form>

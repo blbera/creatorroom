@@ -10,6 +10,7 @@ import {
   revise,
   validatePack,
   classifyEvidenceQuotes,
+  repairEvidence,
   reviseChapters,
   decideFinding,
   findingId,
@@ -164,26 +165,32 @@ export class Workflow {
       // An unresolved error on unchanged content must not vanish because a new model pass omitted it.
       if (!pack.review) {
         const previous = p.packs.find((item) => item.version === version - 1);
-        const unchanged = new Set<string>();
+        const unchanged = new Map<string, string>();
         if (previous) {
           for (const name of Object.keys(pack.content.assets) as AssetName[])
             if (
               JSON.stringify(previous.content.assets[name]) ===
-              JSON.stringify(pack.content.assets[name])
+                JSON.stringify(pack.content.assets[name]) ||
+              (pack.evidenceRepair &&
+                previous.content.assets[name].content === pack.content.assets[name].content)
             )
-              unchanged.add(pack.content.assets[name].id);
+              unchanged.set(previous.content.assets[name].id, pack.content.assets[name].id);
           if (JSON.stringify(previous.content.chapters) === JSON.stringify(pack.content.chapters))
-            unchanged.add('chapters');
+            unchanged.set('chapters', 'chapters');
           for (const finding of previous.review?.findings ?? [])
             if (
               finding.severity === 'error' &&
               unchanged.has(finding.assetId) &&
               !review.findings.some(
                 (item) =>
-                  item.assetId === finding.assetId && item.explanation === finding.explanation,
+                  item.assetId === unchanged.get(finding.assetId) &&
+                  item.explanation === finding.explanation,
               )
             )
-              review.findings.push(structuredClone(finding));
+              review.findings.push({
+                ...structuredClone(finding),
+                assetId: unchanged.get(finding.assetId)!,
+              });
         }
       }
       const fresh = this.store.get(p.id)!;
@@ -229,6 +236,7 @@ export class Workflow {
       }
       const asset = classifyEvidenceQuotes(previous.content.assets.description);
       const pack = revise(previous, 'description', asset);
+      pack.evidenceRepair = true;
       pack.checks = validatePack(p, pack.content);
       p.packs.push(pack);
       this.store.save(p);
@@ -292,7 +300,10 @@ export class Workflow {
           assets: replacement.assets,
         },
       };
-      for (const a of Object.values(pack.content.assets)) a.id = randomUUID();
+      for (const name of AssetName.options) {
+        pack.content.assets[name] = classifyEvidenceQuotes(pack.content.assets[name]);
+        pack.content.assets[name].id = randomUUID();
+      }
       pack.checks = validatePack(p, pack.content);
       p.packs.push(pack);
       this.store.save(p);
@@ -330,7 +341,29 @@ export class Workflow {
     }
     if (/^help$/i.test(command)) {
       await send(
-        'Commands: brief <direction>; angle 1|2; revise <description|x|linkedin|newsletter> <request>; revise chapters <request>; fix F1 v<number>; accept F1 v<number> <reason>; glossary "original" => "preferred"; approve v<number>. For multiple projects prefix project <id>.',
+        'Commands: brief <direction>; angle 1|2; revise <description|x|linkedin|newsletter> <request>; revise chapters <request>; repair evidence; fix F1 v<number>; accept F1 v<number> <reason>; glossary "original" => "preferred"; approve v<number>. For multiple projects prefix project <id>.',
+      );
+      return;
+    }
+    if (/^repair evidence$/i.test(command)) {
+      const previous = p.packs.at(-1);
+      if (!previous?.review) {
+        await send('Generate a pack and wait for review first.');
+        return;
+      }
+      const next = repairEvidence(previous);
+      if (!next) {
+        await send(
+          'No paraphrase quote metadata needs correction. Actual quotation mismatches and other validation errors still require a content revision.',
+        );
+        return;
+      }
+      await this.finishPack(
+        job,
+        client,
+        p,
+        next,
+        'Correct paraphrase quote metadata across the pack; preserve all wording, chapters, claims and source references.',
       );
       return;
     }
@@ -614,6 +647,10 @@ export class Workflow {
     const fresh = this.store.get(p.id)!;
     this.store.db.transaction(() => {
       if (!fresh.packs.some((v) => v.version === pack.version)) {
+        const changed = new Set<string>(pack.changed);
+        for (const name of AssetName.options)
+          if (changed.has('all') || changed.has(name))
+            pack.content.assets[name] = classifyEvidenceQuotes(pack.content.assets[name]);
         pack.creatorRequest = p.creatorRequest;
         pack.brief = p.brief;
         pack.checks = validatePack(fresh, pack.content);

@@ -330,3 +330,146 @@ test('a named fix can complete re-review and creator approval without touching t
   assert.ok(saved.history!.some((event) => event.label === 'Approved exact version v2'));
   h.store.db.close();
 });
+
+test('initial generation classifies paraphrase evidence in every format before validation and handoff', async () => {
+  const p = project();
+  const output = structuredClone(p.packs[0].content);
+  for (const asset of Object.values(output.assets))
+    asset.evidence = asset.evidence.map((e) => ({ ...e, quote: 'Source excerpt used as support' }));
+  p.packs = [];
+  p.angles = [
+    { title: 'Practical', rationale: 'Original', segments: [p.segments[0].id] },
+    { title: 'Creative', rationale: 'Original', segments: [p.segments[1].id] },
+  ];
+  const h = harness(p, (task) =>
+    task.startsWith('Review the ORIGINAL') ? { findings: [] } : output,
+  );
+  await h.run('@producer angle 1');
+  const pack = h.store.get(p.id)!.packs[0];
+  for (const asset of Object.values(pack.content.assets))
+    assert.equal(asset.evidence[0].quote, null);
+  assert.equal(pack.checks!.filter((issue) => issue.severity === 'error').length, 0);
+  assert.equal(output.assets.description.evidence[0].quote, 'Source excerpt used as support');
+  assert.equal(h.calls.filter((call) => call.name === 'send_targeted_message').length, 1);
+  await h.run('review project editorial-test v1', 'producer-id', 'reviewer');
+  await h.run('@producer approve v1');
+  assert.equal(h.store.get(p.id)!.approvals[0].version, 1);
+  h.store.db.close();
+});
+
+test('selective revisions classify only the changed asset and preserve other content and history', async () => {
+  const p = project();
+  const before = structuredClone(p.packs[0]);
+  const replacement = {
+    ...structuredClone(p.packs[0].content.assets.linkedin),
+    content: 'Revised '.repeat(150).trim(),
+    evidence: [{ claim: 'Collect notes', segments: [p.segments[0].id], quote: p.segments[0].text }],
+  };
+  const h = harness(p, () => replacement);
+  await h.run('@producer revise linkedin Make the opening clearer.');
+  const saved = h.store.get(p.id)!;
+  assert.equal(saved.packs[1].content.assets.linkedin.evidence[0].quote, null);
+  assert.deepEqual(saved.packs[0], before);
+  for (const name of ['description', 'x', 'newsletter'] as const)
+    assert.deepEqual(saved.packs[1].content.assets[name], before.content.assets[name]);
+  assert.equal(saved.packs[1].review, undefined);
+  assert.equal(saved.approvals.length, 0);
+  h.store.db.close();
+});
+
+test('one creator evidence repair corrects all legacy formats without model rewrites or historical mutation', async () => {
+  const p = project();
+  for (const asset of Object.values(p.packs[0].content.assets))
+    asset.evidence = asset.evidence.map((entry) => ({ ...entry, quote: p.segments[0].text }));
+  const before = structuredClone(p.packs[0]);
+  const h = harness(p, () => ({ findings: [] }));
+  await h.run('@producer repair evidence', 'another-person', 'producer', 'not-creator');
+  assert.equal(h.store.get(p.id)!.packs.length, 1);
+  const body = '@producer repair evidence';
+  await h.run(body);
+  await h.run(body);
+  let saved = h.store.get(p.id)!;
+  assert.equal(saved.packs.length, 2);
+  assert.deepEqual(saved.packs[0], before);
+  assert.deepEqual(saved.packs[1].content.chapters, before.content.chapters);
+  assert.equal(saved.packs[1].review, undefined);
+  assert.equal(h.generations.length, 0);
+  for (const name of ['description', 'x', 'linkedin', 'newsletter'] as const) {
+    const original = before.content.assets[name];
+    const corrected = saved.packs[1].content.assets[name];
+    assert.equal(corrected.content, original.content);
+    assert.deepEqual(corrected.evidence[0].segments, original.evidence[0].segments);
+    assert.equal(corrected.evidence[0].claim, original.evidence[0].claim);
+    assert.equal(corrected.evidence[0].quote, null);
+    assert.notEqual(corrected.id, original.id);
+  }
+  assert.equal(h.calls.filter((call) => call.name === 'send_targeted_message').length, 1);
+  assert.throws(() => approve(saved, 2, 'human', 'room', 'too-soon'), /review/i);
+  await h.run('review project editorial-test v2', 'producer-id', 'reviewer');
+  await h.run(body, 'human', 'producer', 'already-correct');
+  assert.equal(h.store.get(p.id)!.packs.length, 2);
+  await h.run('@producer approve v2');
+  saved = h.store.get(p.id)!;
+  assert.equal(saved.approvals[0].version, 2);
+  h.store.db.close();
+});
+
+test('automatic classification and legacy repair do not waive real quotes, unknown sources, or format errors', async () => {
+  const p = project();
+  p.packs[0].content.assets.description = {
+    ...p.packs[0].content.assets.description,
+    content: 'An invented direct quote.',
+    evidence: [
+      { claim: 'Quoted claim', segments: [p.segments[0].id], quote: 'An invented direct quote.' },
+    ],
+  };
+  p.packs[0].content.assets.x = {
+    ...p.packs[0].content.assets.x,
+    content: 'Only one post.',
+    evidence: [
+      { claim: 'Unsupported reference', segments: ['missing-source'], quote: 'Unused excerpt' },
+    ],
+  };
+  const h = harness(p, () => ({ findings: [] }));
+  await h.run('@producer repair evidence');
+  await h.run('review project editorial-test v2', 'producer-id', 'reviewer');
+  const saved = h.store.get(p.id)!;
+  const pack = saved.packs[1];
+  assert.equal(pack.content.assets.description.evidence[0].quote, 'An invented direct quote.');
+  assert.ok(pack.checks!.some((issue) => issue.explanation.startsWith('Quote does not match')));
+  assert.ok(pack.checks!.some((issue) => issue.explanation.startsWith('Unknown source segment')));
+  assert.ok(pack.checks!.some((issue) => issue.explanation === 'X thread needs 5–7 posts'));
+  assert.throws(() => approve(saved, 2, 'human', 'room', 'blocked'), /deterministic/);
+  h.store.db.close();
+});
+
+test('metadata-only evidence repair cannot erase a blocking model finding about unchanged wording', async () => {
+  const p = project();
+  p.packs[0].content.assets.linkedin = {
+    ...p.packs[0].content.assets.linkedin,
+    evidence: [{ claim: 'Collect notes', segments: [p.segments[0].id], quote: p.segments[0].text }],
+  };
+  p.packs[0].review!.findings = [
+    {
+      assetId: 'linkedin',
+      severity: 'error',
+      segments: [p.segments[0].id],
+      explanation: 'An unresolved claim in unchanged wording',
+      suggestion: 'Revise the claim',
+    },
+  ];
+  const h = harness(p, () => ({ findings: [] }));
+  await h.run('@producer repair evidence');
+  await h.run('review project editorial-test v2', 'producer-id', 'reviewer');
+  const saved = h.store.get(p.id)!;
+  assert.equal(
+    saved.packs[1].review!.findings[0].assetId,
+    saved.packs[1].content.assets.linkedin.id,
+  );
+  assert.equal(
+    saved.packs[1].review!.findings[0].explanation,
+    'An unresolved claim in unchanged wording',
+  );
+  assert.throws(() => approve(saved, 2, 'human', 'room', 'blocked'), /Resolve blocking/);
+  h.store.db.close();
+});

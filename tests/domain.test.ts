@@ -80,6 +80,18 @@ test('SRT/VTT stable IDs, Unicode, hour timestamps and malformed input', () => {
   assert.throws(() => parseTranscript('broken', 60));
   assert.throws(() => parseTranscript('x'.repeat(2100000), 60));
 });
+
+test('caption duration errors identify the cue and accept exact fractional video durations', () => {
+  const caption = 'WEBVTT\n\n00:03:06.640 --> 00:03:09.280\nAn original closing line.';
+  assert.throws(
+    () => parseTranscript(caption, 187),
+    /cue 1 ends at 189\.28 seconds, beyond the confirmed 187-second video duration/,
+  );
+  assert.equal(
+    parseTranscript('WEBVTT\n\n00:00.000 --> 00:01.841\nOriginal line.', 1.841)[0].end,
+    1.841,
+  );
+});
 test('chapter checks include final duration, order, first chapter and count', () => {
   const p = project();
   assert.equal(

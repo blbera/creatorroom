@@ -246,6 +246,11 @@ const styles: Record<string, string[]> = {
 
   alert: ['mt-5 rounded-md bg-[#f6ded4] p-[15px] text-[13px] motion-safe:animate-enter'],
 
+  'import-success': [
+    'mt-5 grid gap-3 rounded-lg border border-[#cfddbd] bg-[#edf3e3] p-4 text-xs',
+    '[&_p]:m-0 [&_p]:leading-relaxed [&>a]:w-fit [&>a]:underline [&>a]:underline-offset-2',
+  ],
+
   'modal-backdrop': [
     'fixed inset-0 z-10 flex items-center justify-center bg-[#15291fcc] p-[25px]',
     'motion-safe:animate-fade',

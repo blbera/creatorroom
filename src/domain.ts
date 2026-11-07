@@ -54,6 +54,7 @@ export type Pack = {
   brief?: string;
   findingDecisions?: { findingId: string; reason: string; creatorId: string; at: string }[];
   fixesFinding?: { version: number; findingId: string; explanation: string };
+  evidenceRepair?: boolean;
   review?: z.infer<typeof Review>;
   checks?: Issue[];
 };
@@ -157,8 +158,14 @@ export const parseTranscript = (input: string, duration: number): Segment[] => {
       )
       .trim();
     if (!body && text.startsWith('WEBVTT') && end > start && end <= duration + 0.05) continue;
-    if (end <= start || end > duration + 0.05 || start < (result.at(-1)?.start ?? 0) || !body)
-      throw Error('Invalid cue ordering, duration, or empty text');
+    if (end <= start) throw Error(`Transcript cue ${cue + 1} must end after it starts.`);
+    if (end > duration + 0.05)
+      throw Error(
+        `Transcript cue ${cue + 1} ends at ${end} seconds, beyond the confirmed ${duration}-second video duration. Check the duration or use captions trimmed to the video.`,
+      );
+    if (start < (result.at(-1)?.start ?? 0))
+      throw Error(`Transcript cue ${cue + 1} starts before the preceding cue.`);
+    if (!body) throw Error(`Transcript cue ${cue + 1} has no text.`);
     result.push({
       id: 's-' + createHash('sha256').update(`${start}|${end}|${body}`).digest('hex').slice(0, 16),
       start,
@@ -262,6 +269,31 @@ export const classifyEvidenceQuotes = (asset: z.infer<typeof Asset>): z.infer<ty
     quote: entry.quote && normal(asset.content).includes(normal(entry.quote)) ? entry.quote : null,
   })),
 });
+
+// Existing versions stay immutable. Correct only excerpt metadata that was
+// mistaken for a direct quotation; actual quotations still face source checks.
+export const repairEvidence = (previous: Pack): Pack | undefined => {
+  const content = structuredClone(previous.content);
+  const changed: AssetName[] = [];
+  for (const name of AssetName.options) {
+    const original = previous.content.assets[name];
+    const corrected = classifyEvidenceQuotes(original);
+    if (JSON.stringify(corrected.evidence) !== JSON.stringify(original.evidence)) {
+      content.assets[name] = { ...corrected, id: randomUUID() };
+      changed.push(name);
+    }
+  }
+  if (!changed.length) return;
+  return {
+    version: previous.version + 1,
+    createdAt: new Date().toISOString(),
+    content,
+    changed,
+    evidenceRepair: true,
+    creatorRequest: previous.creatorRequest,
+    brief: previous.brief,
+  };
+};
 
 export const revise = (
   previous: Pack,
